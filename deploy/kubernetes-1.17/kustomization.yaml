@@ -1,0 +1,40 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+namespace: csi-sanlock-lvm-system
+
+# Commented due to https://github.com/kubernetes-sigs/kustomize/issues/677
+#commonLabels:
+#  app: csi-sanlock-lvm
+
+resources:
+- crd-snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+- crd-snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+- crd-snapshot.storage.k8s.io_volumesnapshots.yaml
+- csi-sanlock-lvm-attacher.yaml
+- csi-sanlock-lvm-driverinfo.yaml
+- csi-sanlock-lvm-plugin.yaml
+- csi-sanlock-lvm-provisioner.yaml
+- csi-sanlock-lvm-resizer.yaml
+- csi-sanlock-lvm-snapshotclass.yaml
+- csi-sanlock-lvm-snapshotter.yaml
+- csi-sanlock-lvm-storageclass.yaml
+- rbac-attacher.yaml
+- rbac-provisioner.yaml
+- rbac-resizer.yaml
+- rbac-snapshot-controller.yaml
+- rbac-snapshotter.yaml
+- setup-snapshot-controller.yaml
+- csi-sanlock-lvm-config.yaml
+- csi-sanlock-lvm-networkpolicy.yaml

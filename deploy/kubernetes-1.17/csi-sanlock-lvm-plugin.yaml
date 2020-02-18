@@ -1,0 +1,196 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-sanlock-lvm-plugin
+spec:
+  selector:
+    matchLabels:
+      app: csi-sanlock-lvm-plugin
+  template:
+    metadata:
+      labels:
+        app: csi-sanlock-lvm-plugin
+    spec:
+      initContainers:
+        - name: modprobe
+          image: busybox:1.31.1
+          command: ['sh', '-c', 'modprobe dm_thin_pool && modprobe dm_snapshot']
+          volumeMounts:
+            - mountPath: /lib/modules
+              name: modules-dir
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+              - SYS_MODULE
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+
+      containers:
+        - name: driver
+          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.1
+          imagePullPolicy: Always # FIXME for development
+          args:
+            - "--name=csi-sanlock-lvm.csi.vleo.net"
+            - "--listen=$(CSI_ENDPOINT)"
+            - "--node-id=$(NODE_NAME)"
+            - "--lvmctrld=tcp://$(POD_IP):9000"
+            - "--v=5"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          securityContext:
+            # This is necessary only for systems with SELinux, where
+            # non-privileged sidecar containers cannot access unix domain socket
+            # created by privileged CSI driver container.
+            privileged: true
+          ports:
+          - containerPort: 9898
+            name: healthz
+            protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 200 # sanlock could require up to 3 minutes to start
+            timeoutSeconds: 3
+            periodSeconds: 2
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            timeoutSeconds: 3
+            periodSeconds: 2
+          #startupProbe: # FIXME: Why this doesn't work on stock 1.17?
+          #  httpGet:
+          #    path: /healthz
+          #    port: healthz
+          #  failureThreshold: 30
+          #  periodSeconds: 10
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+              name: mountpoint-dir
+            - mountPath: /var/lib/kubelet/plugins
+              mountPropagation: Bidirectional
+              name: plugins-dir
+            - mountPath: /dev
+              name: dev-dir
+            - mountPath: /lib/modules
+              name: modules-dir
+
+        - name: lvmctrld
+          image: quay.io/aleofreddi/lvmctrld:v0.1
+          imagePullPolicy: Always # FIXME for development
+          args:
+            - "--listen=tcp://0.0.0.0:9000"
+            - "--host-id-addr=$(NODE_IP)"
+            - "--v=5"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          securityContext:
+            privileged: true
+          ports:
+          - containerPort: 9000
+            name: lvmctrld
+            protocol: TCP
+          volumeMounts:
+            - mountPath: /dev
+              name: dev-dir
+
+        - name: node-driver-registrar
+          image: quay.io/k8scsi/csi-node-driver-registrar:v1.2.0
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/csi-sanlock-lvm /registration/csi-sanlock-lvm-reg.sock"]
+          args:
+            - --v=5
+            - --csi-address=/csi/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-sanlock-lvm/csi.sock
+          securityContext:
+            # This is necessary only for systems with SELinux, where
+            # non-privileged sidecar containers cannot access unix domain socket
+            # created by privileged CSI driver container.
+            privileged: true
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          - mountPath: /registration
+            name: registration-dir
+
+        - name: liveness-probe
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          image: quay.io/k8scsi/livenessprobe:v1.1.0
+          args:
+          - --csi-address=/csi/csi.sock
+          - --connection-timeout=3s
+          - --health-port=9898
+
+      volumes:
+        - hostPath:
+            path: /var/lib/kubelet/plugins/csi-sanlock-lvm
+            type: DirectoryOrCreate
+          name: socket-dir
+        - hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+          name: mountpoint-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+          name: registration-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins
+            type: Directory
+          name: plugins-dir
+        - hostPath:
+            path: /dev
+            type: Directory
+          name: dev-dir
+        - hostPath:
+            path: /lib/modules
+            type: Directory
+          name: modules-dir

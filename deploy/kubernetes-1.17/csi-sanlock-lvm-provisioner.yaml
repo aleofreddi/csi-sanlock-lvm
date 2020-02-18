@@ -1,0 +1,74 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: csi-sanlock-lvm-provisioner 
+  labels:
+    app: csi-sanlock-lvm-provisioner 
+spec:
+  selector:
+    app: csi-sanlock-lvm-provisioner 
+  ports:
+    - name: dummy
+      port: 12345
+
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: csi-sanlock-lvm-provisioner
+spec:
+  serviceName: "csi-sanlock-lvm-provisioner"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-sanlock-lvm-provisioner
+  template:
+    metadata:
+      labels:
+        app: csi-sanlock-lvm-provisioner
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - csi-sanlock-lvm-plugin
+            topologyKey: kubernetes.io/hostname
+      serviceAccountName: csi-provisioner
+      containers:
+        - name: csi-provisioner
+          image: quay.io/k8scsi/csi-provisioner:v1.5.0-rc1
+          args:
+            - -v=5
+            - --csi-address=/csi/csi.sock
+            - --feature-gates=Topology=true
+          securityContext:
+            # This is necessary only for systems with SELinux, where
+            # non-privileged sidecar containers cannot access unix domain socket
+            # created by privileged CSI driver container.
+            privileged: true
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+      volumes:
+        - hostPath:
+            path: /var/lib/kubelet/plugins/csi-sanlock-lvm
+            type: DirectoryOrCreate
+          name: socket-dir

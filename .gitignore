@@ -1,0 +1,3 @@
+lvmctrld/bin
+lvmctrld/proto/*.go
+driverd/bin

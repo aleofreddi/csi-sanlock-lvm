@@ -1,0 +1,149 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package proto;
+
+message VolumeGroup {
+  string vg_name = 1;
+  uint32 pv_count = 2;
+  uint32 lv_count = 3;
+  uint32 snap_count = 4;
+  string vg_attr = 5;
+  uint64 vg_size = 6;
+  uint64 vg_free = 7;
+  repeated string vg_tags = 8;
+}
+
+message VgsRequest {
+  string target = 1;
+  string select = 2;
+}
+
+message VgsResponse {
+  repeated VolumeGroup vgs = 1;
+}
+
+message LogicalVolume {
+  string lv_name = 1;
+  string vg_name = 2;
+  string lv_attr = 3;
+  uint64 lv_size = 4;
+  string pool_lv = 5;
+  string origin = 6;
+  string data_percent = 7;
+  string metadata_percent = 8;
+  string move_pv = 9;
+  string mirror_log = 10;
+  string copy_percent = 11;
+  string convert_lv = 12;
+  repeated string lv_tags = 13;
+  repeated string role = 14;
+  string lv_time = 15;
+}
+
+message LvCreateRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+  uint64 size = 3;
+  repeated string lv_tags = 4;
+  string origin = 5;
+}
+
+message LvCreateResponse {}
+
+message LvRemoveRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+  string select = 3;
+}
+
+message LvRemoveResponse {}
+
+message LvsRequest {
+  string target = 1;
+  string select = 2;
+}
+
+message LvsResponse {
+  repeated LogicalVolume lvs = 1;
+}
+
+message LvActivateRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+  enum LockingMode {
+    EXCLUSIVE = 0;
+    SHARED = 1;
+  }
+  LockingMode locking_mode = 3;
+}
+
+message LvActivateResponse {}
+
+message LvDeactivateRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+}
+
+message LvDeactivateResponse {}
+
+message LvAddTagRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+  repeated string lv_tags = 3;
+}
+
+message LvAddTagResponse {}
+
+message LvDelTagRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+  repeated string lv_tags = 3;
+}
+
+message LvDelTagResponse {}
+
+message LvChangeRequest {
+  string target = 1;
+  enum ActivationMode {
+    NONE = 0;
+    ACTIVE_EXCLUSIVE = 1;
+    ACTIVE_SHARED = 2;
+    DEACTIVATE = 3;
+  }
+  ActivationMode activate = 2;
+  repeated string add_tag = 3;
+  repeated string del_tag = 4;
+}
+
+message LvChangeResponse {}
+
+message LvResizeRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+  uint64 size = 3;
+}
+
+message LvResizeResponse {}
+
+service LvmCtrld {
+  rpc Vgs(VgsRequest) returns (VgsResponse) {}
+  rpc LvCreate(LvCreateRequest) returns (LvCreateResponse) {}
+  rpc LvRemove(LvRemoveRequest) returns (LvRemoveResponse) {}
+  rpc Lvs(LvsRequest) returns (LvsResponse) {}
+  rpc LvChange(LvChangeRequest) returns (LvChangeResponse) {}
+  rpc LvResize(LvResizeRequest) returns (LvResizeResponse) {}
+}
