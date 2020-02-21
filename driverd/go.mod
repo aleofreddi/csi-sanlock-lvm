@@ -1,6 +1,6 @@
 module github.com/aleofreddi/csi-sanlock-lvm/driverd
 
-go 1.12
+go 1.13
 
 require (
 	github.com/aleofreddi/csi-sanlock-lvm/lvmctrld v1.0.0

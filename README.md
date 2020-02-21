@@ -1,4 +1,6 @@
 # CSI Sanlock-LVM Driver
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Build Status](https://travis-ci.com/aleofreddi/csi-sanlock-lvm.svg?branch=master)](https://travis-ci.com/aleofreddi/csi-sanlock-lvm)
 
 The csi-sanlock-lvm driver is a CSI driver for LVM and Sanlock.
 

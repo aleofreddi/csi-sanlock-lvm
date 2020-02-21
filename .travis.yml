@@ -1,0 +1,15 @@
+language: golang
+dist: bionic
+
+go:
+- 1.13
+
+before_install:
+  - sudo apt-get install -y protobuf-compiler golang-goprotobuf-dev
+
+script:
+- make all
+- make test
+
+after_success:
+- bash <(curl -s https://codecov.io/bash)

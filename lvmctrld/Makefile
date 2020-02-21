@@ -12,11 +12,15 @@ clean:
 SRC=\
 ./cmd/main.go ./pkg/grpclogger.go ./pkg/listener.go ./pkg/lock.go ./pkg/lvmctrldserver.go ./proto/lvmctrld.pb.go
 
+# :.!find . -type f -name \*_test.go | sort -u | tr \\n ' '
+TEST=\
+
+
 bin/lvmctrld: $(SRC)
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o ./bin/lvmctrld ./cmd
 
-test: $(SRC)
-	go test ./cmd ./pkg
+test: $(SRC) $(TEST)
+	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
 build-image:
 	docker build -t quay.io/aleofreddi/lvmctrld:v0.1 -f Dockerfile ..
