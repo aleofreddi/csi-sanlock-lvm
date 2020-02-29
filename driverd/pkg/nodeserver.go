@@ -129,10 +129,10 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	// Check arguments
-	if req.GetVolumeId() != "" {
+	if req.GetVolumeId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume id")
 	}
-	if req.GetTargetPath() != "" {
+	if req.GetTargetPath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing target path")
 	}
 
