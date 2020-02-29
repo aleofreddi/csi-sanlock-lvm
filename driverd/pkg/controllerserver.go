@@ -20,14 +20,12 @@ import (
 	"fmt"
 	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog"
 	"regexp"
 	"strings"
-	"time"
 )
 
 const (
@@ -592,15 +590,11 @@ func lvToVolume(lv *proto.LogicalVolume) *csi.Volume {
 }
 
 func lvToSnapshot(lv *proto.LogicalVolume) *csi.Snapshot {
-	ts, _ := time.Parse(time.RFC1123, lv.LvTime)
 	return &csi.Snapshot{
 		SnapshotId:     fmt.Sprintf("%s/%s", lv.VgName, lv.LvName),
 		SourceVolumeId: fmt.Sprintf("%s/%s", lv.VgName, lv.Origin),
 		ReadyToUse:     true,
-		CreationTime: &timestamp.Timestamp{
-			Seconds: ts.Unix(),
-			Nanos:   int32(ts.Nanosecond()),
-		},
-		SizeBytes: int64(lv.LvSize),
+		CreationTime:   lv.LvTime,
+		SizeBytes:      int64(lv.LvSize),
 	}
 }
