@@ -6,7 +6,6 @@ require (
 	github.com/aleofreddi/csi-sanlock-lvm/lvmctrld v1.0.0
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/golang/protobuf v1.3.3
-	github.com/kubernetes-csi/csi-lib-utils v0.3.0
 	github.com/slok/noglog v0.2.0 // indirect
 	github.com/spf13/afero v1.2.2 // indirect
 	golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa

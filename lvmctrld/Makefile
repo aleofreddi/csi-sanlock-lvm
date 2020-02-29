@@ -1,6 +1,8 @@
-.PHONY: test build-image push-image all clean
+.PHONY: all build test clean build-image push-image
 
-all:	bin/lvmctrld test
+all:	build test
+
+build:  bin/lvmctrld
 
 clean:
 	$(RM) -r ./bin ./proto/*.pb.go
@@ -14,7 +16,7 @@ SRC=\
 
 # :.!find . -type f -name \*_test.go | sort -u | tr \\n ' '
 TEST=\
-
+./pkg/fakecommander_test.go ./pkg/lvmctrldserver_test.go 
 
 bin/lvmctrld: $(SRC)
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o ./bin/lvmctrld ./cmd

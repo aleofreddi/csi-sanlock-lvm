@@ -1,11 +1,16 @@
 # CSI Sanlock-LVM Driver
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Build Status](https://travis-ci.com/aleofreddi/csi-sanlock-lvm.svg?branch=master)](https://travis-ci.com/aleofreddi/csi-sanlock-lvm)
+[![Test Coverage](https://codecov.io/gh/aleofreddi/csi-sanlock-lvm/branch/master/graph/badge.svg)](https://codecov.io/gh/aleofreddi/csi-sanlock-lvm) 
 
-The csi-sanlock-lvm driver is a CSI driver for LVM and Sanlock.
+`csi-sanlock-lvm` is a CSI driver for LVM and Sanlock.
 
 It comes in handy when you want your nodes to access data on a shared block
 device - a typical example being Kubernetes on bare metal with a SAN.
+
+## Project maturity
+
+This project is in alpha state, YMMV.
 
 ## Disclaimer
 
@@ -55,7 +60,7 @@ When the volume group setup is complete, go ahead and create a namespace to
 accommodate the driver:
 
 ```shell
-$ kubectl create ns csi-sanlock-lvm-system
+$ kubectl create namespace csi-sanlock-lvm-system
 ```
 
 And then deploy using `kustomization`:
@@ -68,7 +73,7 @@ On a successful installation, all csi pods should be running (with the exception
 of the initialization job one, if any):
 
 ```shell
-$ kubectl -n csi-sanlock-lvm-system get po
+$ kubectl -n csi-sanlock-lvm-system get pod
 NAME                            READY   STATUS      RESTARTS   AGE
 csi-sanlock-lvm-attacher-0      1/1     Running     0          4h41m
 csi-sanlock-lvm-init-bwsh7      0/1     Completed   0          4h42m
