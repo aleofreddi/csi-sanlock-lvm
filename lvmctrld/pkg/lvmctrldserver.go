@@ -20,9 +20,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
+	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog"
 	"regexp"
 	"strings"
 	"time"
@@ -31,6 +31,15 @@ import (
 // Credits to dave at https://stackoverflow.com/questions/40939261/golang-parse-strange-date-format
 type lvmTime struct {
 	time.Time
+}
+
+func (t *lvmTime) UnmarshalJSON(buf []byte) error {
+	date, err := time.Parse("2006-01-02 15:04:05 -0700", strings.Trim(string(buf), `"`))
+	if err != nil {
+		return err
+	}
+	t.Time = date
+	return nil
 }
 
 type lvmReportLvs struct {
@@ -47,7 +56,7 @@ type lvmReportLvs struct {
 	CopyPercent     string  `json:"copy_percent"`
 	ConvertLv       string  `json:"convert_lv"`
 	LvTags          string  `json:"lv_tags"`
-	Role            string  `json:"role"`
+	LvRole          string  `json:"lv_role"`
 	LvTime          lvmTime `json:"lv_time,string"`
 }
 
@@ -74,10 +83,18 @@ var (
 	// LVM tags should match the following regex.
 	tagRe = regexp.MustCompile("^[A-Za-z0-9_+.\\-/=!:#&]+$")
 
-	lvLockedRe   = regexp.MustCompile(`(?mi)^\s*LV locked by other host`)
-	lvExists     = regexp.MustCompile(`(?mi)^\s*Logical Volume "[^"]+" already exists in volume group`)
-	lvNotFound   = regexp.MustCompile(`(?mi)^\s*Failed to find logical volume`)
-	lvOutOfRange = regexp.MustCompile(`(?mi)^\s*Volume group "[^"]+" has insufficient free space`)
+	lvLockedRe = regexp.MustCompile(`(?mi)^\s*LV locked by other host`)
+	lvExists   = regexp.MustCompile(`(?mi)^\s*Logical Volume "[^"]+" already exists in volume group`)
+	lvNotFound = []*regexp.Regexp{
+		regexp.MustCompile(`(?mi)^\s*Failed to find logical volume "[^"]+"`),
+		regexp.MustCompile(`(?mi)^\s*Logical volume \S+ not found in volume group \S+.`),
+	}
+	vgNotFound   = regexp.MustCompile(`(?mi)^\s*Volume group "[^"]+" not found`)
+	lvOutOfRange = []*regexp.Regexp{
+		regexp.MustCompile(`(?mi)^\s*Volume group "[^"]+" has insufficient free space`),
+		regexp.MustCompile(`(?mi)^\s*Insufficient free space: \d+ extents needed, but only \d+ available`),
+	}
+	lvSizeMatches = regexp.MustCompile(`(?mi)^\s*New size \(\d+ extents\) matches existing size \(\d+ extents\)`)
 )
 
 type lvmctrldServer struct {
@@ -100,9 +117,9 @@ func (s lvmctrldServer) Vgs(_ context.Context, req *proto.VgsRequest) (*proto.Vg
 	if req.GetSelect() != "" {
 		args = append(args, "-S", req.GetSelect())
 	}
-	//if req.Target != "" { // FIXME - should be there!
-	//	args = append(args, req.Target)
-	//}
+	if req.Target != "" {
+		args = append(args, req.Target)
+	}
 	out, err := runReport(s.cmd, "vgs", args...)
 	if err != nil {
 		return nil, err
@@ -134,17 +151,9 @@ func (s lvmctrldServer) LvCreate(_ context.Context, req *proto.LvCreateRequest) 
 		args = append(args, "--addtag", tag)
 	}
 	args = append(args, "-n", fmt.Sprintf("%s/%s", req.VgName, req.LvName))
-	klog.Infof("Running lvcreate %v", args)
 	code, stdout, stderr, err := s.cmd.Exec("lvcreate", args...)
 	if code != 0 || err != nil {
-		// On failure, lvm commands will always return 5. So we need to check stderr to discriminate failure reasons
-		if lvExists.Match(stderr) {
-			return nil, status.Errorf(codes.AlreadyExists, "failed to create logical volume %s/%s because it already exists", req.VgName, req.LvName)
-		}
-		if lvOutOfRange.Match(stderr) {
-			return nil, status.Errorf(codes.OutOfRange, "failed to create logical volume %s/%s due to insufficient free space", req.VgName, req.LvName)
-		}
-		return nil, fmt.Errorf("failed to create volume: rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+		return nil, parseLvmError(code, stdout, stderr)
 	}
 	return &proto.LvCreateResponse{}, nil
 }
@@ -157,25 +166,17 @@ func (s lvmctrldServer) LvRemove(_ context.Context, req *proto.LvRemoveRequest) 
 		args = append(args, "-S", req.GetSelect())
 	}
 	args = append(args, fmt.Sprintf("%s/%s", req.VgName, req.LvName))
-	klog.Infof("Running lvremove %v", args)
 
 	code, stdout, stderr, err := s.cmd.Exec("lvremove", args...)
 	if code != 0 || err != nil {
-		// On failure, lvm commands will always return 5. So we need to check stderr to discriminate failure reasons
-		if lvLockedRe.Match(stderr) {
-			return nil, status.Errorf(codes.PermissionDenied, "failed to remove logical volume %s/%s because it is locked by another host", req.VgName, req.LvName)
-		}
-		if lvNotFound.Match(stderr) {
-			return nil, status.Errorf(codes.NotFound, "logical volume %s/%s does not exist", req.VgName, req.LvName)
-		}
-		return nil, fmt.Errorf("failed to remove volume: rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+		return nil, parseLvmError(code, stdout, stderr)
 	}
 	return &proto.LvRemoveResponse{}, nil
 }
 
 func (s lvmctrldServer) Lvs(_ context.Context, req *proto.LvsRequest) (*proto.LvsResponse, error) {
 	args := []string{
-		"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,role,lv_time",
+		"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time",
 		"--units", "b",
 		"--nosuffix",
 		"--reportformat", "json",
@@ -204,19 +205,13 @@ func (s lvmctrldServer) Lvs(_ context.Context, req *proto.LvsRequest) (*proto.Lv
 
 func (s lvmctrldServer) LvResize(ctx context.Context, req *proto.LvResizeRequest) (*proto.LvResizeResponse, error) {
 	args := []string{
+		"-f",
 		"-L", fmt.Sprintf("%db", req.Size),
 		fmt.Sprintf("%s/%s", req.VgName, req.LvName),
 	}
 	code, stdout, stderr, err := s.cmd.Exec("lvresize", args...)
 	if code != 0 || err != nil {
-		// On failure, lvm commands will always return 5. So we need to check stderr to discriminate failure reasons
-		if lvLockedRe.Match(stderr) {
-			return nil, status.Errorf(codes.PermissionDenied, "failed to activate logical volume %s/%s because it is locked by another host", req.VgName, req.LvName)
-		}
-		if lvNotFound.Match(stderr) {
-			return nil, status.Error(codes.NotFound, "logical volume not found")
-		}
-		return nil, fmt.Errorf("failed to resize volume %s/%s: rc=%d stdout=%q stderr=%q", req.VgName, req.LvName, code, stdout, stderr)
+		return nil, parseLvmError(code, stdout, stderr)
 	}
 	return &proto.LvResizeResponse{}, nil
 }
@@ -244,30 +239,21 @@ func (s lvmctrldServer) LvChange(ctx context.Context, req *proto.LvChangeRequest
 	args = append(args, req.GetTarget())
 	code, stdout, stderr, err := s.cmd.Exec("lvchange", args...)
 	if code != 0 || err != nil {
-		// On failure, lvm commands will always return 5. So we need to check stderr to discriminate failure reasons
-		if lvLockedRe.Match(stderr) {
-			return nil, status.Errorf(codes.PermissionDenied, "failed to change %s because it is locked by another host", req.GetTarget())
-		}
-		return nil, fmt.Errorf("failed to change %s: rc=%d stdout=%q stderr=%q", req.GetTarget(), code, stdout, stderr)
+		return nil, parseLvmError(code, stdout, stderr)
 	}
 	return &proto.LvChangeResponse{}, nil
 }
 
-func runReport(cmd commander, exe string, args ...string) (lvmReport, error) {
-	klog.Infof("Executing lvm report command: %s %v", cmd, args)
+func runReport(cmd commander, exe string, args ...string) (*lvmReport, error) {
 	code, stdout, stderr, err := cmd.Exec(exe, args...)
 	if code != 0 || err != nil {
-		// On failure, lvm commands will always return 5. So we need to check stderr to discriminate failure reasons
-		if lvNotFound.Match(stderr) {
-			return lvmReport{}, status.Error(codes.NotFound, "logical volume not found")
-		}
-		return lvmReport{}, fmt.Errorf("failed to run %s: rc=%d stdout=%q stderr=%q", exe, code, stdout, stderr)
+		return nil, parseLvmError(code, stdout, stderr)
 	}
 	var result lvmReport
 	if err := json.Unmarshal(stdout, &result); err != nil {
-		return lvmReport{}, fmt.Errorf("failed to deserialize lvm report with error %v: %q", err, stdout)
+		return nil, fmt.Errorf("failed to deserialize lvm report with error %v: %q", err, stdout)
 	}
-	return result, nil
+	return &result, nil
 }
 
 func lvmToVolumeGroup(vg *lvmReportVgs) *proto.VolumeGroup {
@@ -279,11 +265,12 @@ func lvmToVolumeGroup(vg *lvmReportVgs) *proto.VolumeGroup {
 		VgAttr:    vg.VgAttr,
 		VgSize:    vg.VgSize,
 		VgFree:    vg.VgFree,
-		VgTags:    strings.Split(vg.VgTags, ","),
+		VgTags:    splitLvmField(vg.VgTags),
 	}
 }
 
 func lvmToLogicalVolume(lv *lvmReportLvs) *proto.LogicalVolume {
+	lvTime, _ := ptypes.TimestampProto(lv.LvTime.Time)
 	return &proto.LogicalVolume{
 		LvName:          lv.LvName,
 		VgName:          lv.VgName,
@@ -297,17 +284,53 @@ func lvmToLogicalVolume(lv *lvmReportLvs) *proto.LogicalVolume {
 		MirrorLog:       lv.MirrorLog,
 		CopyPercent:     lv.CopyPercent,
 		ConvertLv:       lv.ConvertLv,
-		LvTags:          strings.Split(lv.LvTags, ","),
-		Role:            strings.Split(lv.Role, ","),
-		LvTime:          lv.LvTime.Format(time.RFC1123),
+		LvTags:          splitLvmField(lv.LvTags),
+		LvRole:          splitLvmField(lv.LvRole),
+		LvTime:          lvTime,
 	}
 }
 
-func (t *lvmTime) UnmarshalJSON(buf []byte) error {
-	date, err := time.Parse("2006-01-02 15:04:05 -0700", strings.Trim(string(buf), `"`))
-	if err != nil {
-		return err
+func splitLvmField(value string) []string {
+	if value == "" {
+		return []string{}
 	}
-	t.Time = date
-	return nil
+	return strings.Split(value, ",")
+}
+
+func parseLvmError(code int, stdout, stderr []byte) error {
+	if code == 0 {
+		return nil
+	}
+	// On "ordinary" errors, lvm commands will return 5: anything other than 5 is then an unknown error
+	if code != 5 {
+		return fmt.Errorf("unexpected error: rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	// Check stderr to identify the failure reason
+	if lvExists.Match(stderr) {
+		return status.Errorf(codes.AlreadyExists, "target already exists")
+	}
+	if lvLockedRe.Match(stderr) {
+		return status.Errorf(codes.PermissionDenied, "target is locked by another host")
+	}
+	if lvLockedRe.Match(stderr) {
+		return status.Errorf(codes.PermissionDenied, "target is locked by another host")
+	}
+	if vgNotFound.Match(stderr) {
+		return status.Errorf(codes.NotFound, "volume group does not exist")
+	}
+	for _, re := range lvNotFound {
+		if re.Match(stderr) {
+			return status.Errorf(codes.NotFound, "logical volume does not exist")
+		}
+	}
+	for _, re := range lvOutOfRange {
+		if re.Match(stderr) {
+			return status.Errorf(codes.OutOfRange, "insufficient free space")
+		}
+	}
+	if lvSizeMatches.Match(stderr) {
+		// We do not consider a size match an error
+		return nil
+	}
+	return fmt.Errorf("unexpected error: rc=%d stdout=%q stderr=%q", code, stdout, stderr)
 }

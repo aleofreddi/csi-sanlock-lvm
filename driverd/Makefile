@@ -1,9 +1,11 @@
-.PHONY: test build-image push-image all clean
+.PHONY: all build test clean build-image push-image
 
-all:	bin/driverd test
+all:	build test
+
+build:  bin/driverd
 
 clean:
-	$(RM) -rf ./bin
+	$(RM) -r ./bin
 
 # :.!find . -type f -name \*go -a \! -name \*_test.go | sort -u | tr \\n ' '
 SRC=\

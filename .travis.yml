@@ -2,14 +2,20 @@ language: golang
 dist: bionic
 
 go:
-- 1.13
+  - 1.13
+
+env:
+  global:
+  - PROTOBUF_VERSION=3.11.4
+  - PATH="$PATH:$HOME/protoc/bin:$HOME/go/bin"
 
 before_install:
-  - sudo apt-get install -y protobuf-compiler golang-goprotobuf-dev
+  - curl -L https://github.com/google/protobuf/releases/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.zip -o /tmp/protoc.zip
+  - unzip /tmp/protoc.zip -d "$HOME"/protoc
+  - go get -v github.com/golang/protobuf/protoc-gen-go
 
 script:
-- make all
-- make test
+  - make -j2 all
 
 after_success:
-- bash <(curl -s https://codecov.io/bash)
+  - bash <(curl -s https://codecov.io/bash)
