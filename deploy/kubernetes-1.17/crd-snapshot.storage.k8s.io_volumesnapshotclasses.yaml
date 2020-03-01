@@ -1,37 +1,35 @@
-# Copyright 2020 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
 
 ---
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: (devel)
-    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/139"
+    controller-gen.kubebuilder.io/version: v0.2.5
+    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/260"
   creationTimestamp: null
   name: volumesnapshotclasses.snapshot.storage.k8s.io
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .driver
+    name: Driver
+    type: string
+  - JSONPath: .deletionPolicy
+    description: Determines whether a VolumeSnapshotContent created through the VolumeSnapshotClass
+      should be deleted when its bound VolumeSnapshot is deleted.
+    name: DeletionPolicy
+    type: string
+  - JSONPath: .metadata.creationTimestamp
+    name: Age
+    type: date
   group: snapshot.storage.k8s.io
   names:
     kind: VolumeSnapshotClass
     listKind: VolumeSnapshotClassList
     plural: volumesnapshotclasses
     singular: volumesnapshotclass
-  scope: Cluster
   preserveUnknownFields: false
+  scope: Cluster
+  subresources: {}
   validation:
     openAPIV3Schema:
       description: VolumeSnapshotClass specifies parameters that a underlying storage
@@ -42,7 +40,7 @@ spec:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
             of an object. Servers should convert recognized schemas to the latest
-            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources'
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
           type: string
         deletionPolicy:
           description: deletionPolicy determines whether a VolumeSnapshotContent created
@@ -62,7 +60,7 @@ spec:
         kind:
           description: 'Kind is a string value representing the REST resource this
             object represents. Servers may infer this from the endpoint the client
-            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds'
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
           type: string
         parameters:
           additionalProperties:

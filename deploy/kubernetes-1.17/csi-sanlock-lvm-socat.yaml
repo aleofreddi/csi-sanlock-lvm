@@ -30,7 +30,7 @@ spec:
   selector:
     app: csi-sanlock-lvm-socat
   ports:
-  - port: 10000 # fixed port inside the pod, dynamically allocated port outside
+    - port: 10000 # fixed port inside the pod, dynamically allocated port outside
 ---
 kind: StatefulSet
 apiVersion: apps/v1
@@ -50,13 +50,13 @@ spec:
       affinity:
         podAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - csi-sanlock-lvm-plugin
-            topologyKey: kubernetes.io/hostname
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - csi-sanlock-lvm-plugin
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: socat
           image: alpine/socat:1.0.3
@@ -69,8 +69,8 @@ spec:
             # created by privileged CSI driver container.
             privileged: true
           volumeMounts:
-          - mountPath: /csi
-            name: socket-dir
+            - mountPath: /csi
+              name: socket-dir
       volumes:
         - hostPath:
             path: /var/lib/kubelet/plugins/csi-sanlock-lvm

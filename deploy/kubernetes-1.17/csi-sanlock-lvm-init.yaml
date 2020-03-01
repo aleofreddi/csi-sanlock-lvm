@@ -31,20 +31,20 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               add:
-              - SYS_MODULE
+                - SYS_MODULE
               drop:
-              - ALL
+                - ALL
             readOnlyRootFilesystem: true
 
       containers:
-      - name: init
-        image: quay.io/aleofreddi/lvmctrld:v0.1
-        command: ["sh", "-c", "sanlock daemon; lvmlockd --host-id 2000; pvcreate --config 'global{use_lvmlockd=0}' -f /dev/__dev1__ /dev/__dev2__ ...; vgcreate --shared vg01 /dev/__dev1__ ..."]
-        volumeMounts:
-        - mountPath: /dev
-          name: dev-dir
-        securityContext:
-          privileged: true
+        - name: init
+          image: quay.io/aleofreddi/lvmctrld:v0.1
+          command: ["sh", "-c", "sanlock daemon; lvmlockd --host-id 2000; pvcreate --config 'global{use_lvmlockd=0}' -f /dev/sdX; vgcreate --shared vg01 /dev/sdX"]
+          volumeMounts:
+            - mountPath: /dev
+              name: dev-dir
+          securityContext:
+            privileged: true
       volumes:
         - hostPath:
             path: /dev

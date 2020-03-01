@@ -22,21 +22,21 @@ spec:
     matchLabels:
       app: csi-sanlock-lvm-plugin
   policyTypes:
-  - Ingress
-  - Egress
+    - Ingress
+    - Egress
   ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          project: csi-sanlock-lvm-system
-    ports:
-    - protocol: TCP
-      port: 9000
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              project: csi-sanlock-lvm-system
+      ports:
+        - protocol: TCP
+          port: 9000
   egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          project: csi-sanlock-lvm-system
-    ports:
-    - protocol: TCP
-      port: 9000
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              project: csi-sanlock-lvm-system
+      ports:
+        - protocol: TCP
+          port: 9000
