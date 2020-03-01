@@ -29,11 +29,13 @@ var (
 	hostAddr = flag.String("host-id-addr", "", "compute host id from ip address, mutually exclusive with host-id")
 	hostId   = flag.String("host-id", "", "host id, mutually exclusive with host-id-addr")
 	listen   = flag.String("listen", "tcp://0.0.0.0:9000", "listen address")
+	version  string
 )
 
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
+	klog.Infof("Starting lvmctrld %s", version)
 
 	// Parse host id
 	id, err := parseHostId(*hostId, *hostAddr)
@@ -42,6 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Start server
 	listener, err := lvmctrld.NewListener(id, *listen)
 	if err != nil {
 		klog.Errorf("Failed to instance listener: %s", err.Error())

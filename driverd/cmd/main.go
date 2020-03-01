@@ -26,13 +26,16 @@ var (
 	lvmctrld = flag.String("lvmctrld", "tcp://127.0.0.1:9000", "lvmctrld address")
 	name     = flag.String("name", "csi-lvm-sanlock.vleo.net", "name of the driver")
 	nodeId   = flag.String("node-id", "", "node id")
+	version  string
 )
 
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
+	klog.Infof("Starting driverd %s", version)
 
-	listener, err := driverd.NewListener(*name, *nodeId, *listen, *lvmctrld)
+	// Start server
+	listener, err := driverd.NewListener(*name, version, *nodeId, *listen, *lvmctrld)
 	if err != nil {
 		klog.Errorf("Failed to instance listener: %s", err.Error())
 		os.Exit(1)
