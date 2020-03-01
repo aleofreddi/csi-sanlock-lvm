@@ -8,13 +8,9 @@
 It comes in handy when you want your nodes to access data on a shared block
 device - a typical example being Kubernetes on bare metal with a SAN.
 
-## Project maturity
+## Maturity
 
 This project is in alpha state, YMMV.
-
-## Disclaimer
-
-This is not an officially supported Google product.
 
 ## Features
 
@@ -46,15 +42,20 @@ which is ensured to work as long as all the nodes reside in a proper subnet
 
 Before deploying the driver you should initialize a shared volume group.
 
+### Initialize a shared volume group
+
 You can either initialize it externally (like using lvm from a node) or use
 the provided `deploy/kubernetes-1.17/csi-sanlock-lvm-init.yaml` job template
 to get Kubernetes initialize your disks.
 
-Adjust the `command` value accordingly to your setup, so to create the proper
-physical volumes and volume groups.
+To use the `csi-sanlock-lvm-init` job, do the following:
 
-To avoid accidental executions, the job has `parallelism` set to `0`. When
-you're ready to run it, patch `parallelism` to `1` to get it run.
+- Adjust the `command` value according to your need, so to create the proper
+physical volume(s) and volume group(s);
+- When you are ready to run, patch the job `parallelism` to `1` and let the job
+initialize the volume(s).
+
+### Deploy the driver
 
 When the volume group setup is complete, go ahead and create a namespace to
 accommodate the driver:
@@ -108,3 +109,7 @@ command from the root directory:
 ```shell
 $ make
 ```
+
+## Disclaimer
+
+This is not an officially supported Google product.
