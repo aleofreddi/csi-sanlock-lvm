@@ -38,12 +38,15 @@ type listener struct {
 	cSrv *controllerServer
 }
 
-func NewListener(name, nodeId, lsAddr, lvmAddr string) (*listener, error) {
-	if lsAddr == "" {
-		return nil, fmt.Errorf("missing listen address")
-	}
+func NewListener(name, version, nodeId, lsAddr, lvmAddr string) (*listener, error) {
 	if name == "" {
 		return nil, fmt.Errorf("missing driver name")
+	}
+	if version == "" {
+		return nil, fmt.Errorf("missing driver version")
+	}
+	if lsAddr == "" {
+		return nil, fmt.Errorf("missing listen address")
 	}
 	if nodeId == "" {
 		return nil, fmt.Errorf("missing node id")
@@ -56,7 +59,7 @@ func NewListener(name, nodeId, lsAddr, lvmAddr string) (*listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance lvmctrld client factory: %s", err.Error())
 	}
-	is, err := NewIdentityServer(name, "0.1")
+	is, err := NewIdentityServer(name, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %s", err.Error())
 	}
