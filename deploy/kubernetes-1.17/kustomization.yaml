@@ -19,22 +19,22 @@ namespace: csi-sanlock-lvm-system
 #  app: csi-sanlock-lvm
 
 resources:
-- crd-snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-- crd-snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-- crd-snapshot.storage.k8s.io_volumesnapshots.yaml
-- csi-sanlock-lvm-attacher.yaml
-- csi-sanlock-lvm-driverinfo.yaml
-- csi-sanlock-lvm-plugin.yaml
-- csi-sanlock-lvm-provisioner.yaml
-- csi-sanlock-lvm-resizer.yaml
-- csi-sanlock-lvm-snapshotclass.yaml
-- csi-sanlock-lvm-snapshotter.yaml
-- csi-sanlock-lvm-storageclass.yaml
-- rbac-attacher.yaml
-- rbac-provisioner.yaml
-- rbac-resizer.yaml
-- rbac-snapshot-controller.yaml
-- rbac-snapshotter.yaml
-- setup-snapshot-controller.yaml
-- csi-sanlock-lvm-config.yaml
-- csi-sanlock-lvm-networkpolicy.yaml
+  - crd-snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+  - crd-snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+  - crd-snapshot.storage.k8s.io_volumesnapshots.yaml
+  - csi-sanlock-lvm-attacher.yaml
+  - csi-sanlock-lvm-driverinfo.yaml
+  - csi-sanlock-lvm-plugin.yaml
+  - csi-sanlock-lvm-provisioner.yaml
+  - csi-sanlock-lvm-resizer.yaml
+  - csi-sanlock-lvm-snapshotclass.yaml
+  - csi-sanlock-lvm-snapshotter.yaml
+  - csi-sanlock-lvm-storageclass.yaml
+  - rbac-attacher.yaml
+  - rbac-provisioner.yaml
+  - rbac-resizer.yaml
+  - rbac-snapshot-controller.yaml
+  - rbac-snapshotter.yaml
+  - setup-snapshot-controller.yaml
+  - csi-sanlock-lvm-config.yaml
+  - csi-sanlock-lvm-networkpolicy.yaml
