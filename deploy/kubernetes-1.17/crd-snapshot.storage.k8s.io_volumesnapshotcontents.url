@@ -1,1 +1,1 @@
-https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/@@EXTERNAL_SNAPSHOTTER_VERSION@@/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
