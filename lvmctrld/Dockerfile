@@ -16,7 +16,7 @@ FROM golang:1.13 AS builder
 
 RUN apt-get update && apt-get install -y protobuf-compiler golang-goprotobuf-dev
 ADD . /src
-RUN make -C /src/lvmctrld ./bin/lvmctrld
+RUN make -C /src clean build@lvmctrld
 
 FROM ubuntu:18.04
 
