@@ -21,6 +21,7 @@ metadata:
 provisioner: csi-sanlock-lvm.csi.vleo.net
 parameters:
   volumeGroup: vg_hdd
+  filesystem: ext4
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
