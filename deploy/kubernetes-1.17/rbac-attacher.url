@@ -1,1 +1,1 @@
-https://raw.githubusercontent.com/kubernetes-csi/external-attacher/v2.0.0/deploy/kubernetes/rbac.yaml
+https://raw.githubusercontent.com/kubernetes-csi/external-attacher/@@EXTERNAL_ATTACHER_VERSION@@/deploy/kubernetes/rbac.yaml

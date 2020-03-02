@@ -44,7 +44,7 @@ spec:
 
       containers:
         - name: driver
-          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.1
+          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.1 # @@version@@
           imagePullPolicy: Always # FIXME for development
           args:
             - "--name=csi-sanlock-lvm.csi.vleo.net"
@@ -109,7 +109,7 @@ spec:
               name: modules-dir
 
         - name: lvmctrld
-          image: quay.io/aleofreddi/lvmctrld:v0.1
+          image: quay.io/aleofreddi/lvmctrld:v0.1 # @@version@@
           imagePullPolicy: Always # FIXME for development
           args:
             - "--listen=tcp://0.0.0.0:9000"
