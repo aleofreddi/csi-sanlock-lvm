@@ -170,9 +170,10 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	_, err = client.LvCreate(
 		ctx,
 		&proto.LvCreateRequest{
-			VgName: vgName,
-			LvName: lvName,
-			Size:   uint64(req.GetCapacityRange().GetRequiredBytes()),
+			VgName:   vgName,
+			LvName:   lvName,
+			Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
+			Size:     uint64(req.GetCapacityRange().GetRequiredBytes()),
 			LvTags: []string{
 				encodeTag(nameTag + req.GetName()),
 				encodeTag(getOwnerTag(cs.nodeId, cs.lvmctrldAddr)),
@@ -214,7 +215,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Deactivate the volume
 	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   volumeId,
-		Activate: proto.LvChangeRequest_DEACTIVATE,
+		Activate: proto.LvActivationMode_DEACTIVATE,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to deactivate volume: %s", err.Error())
@@ -456,10 +457,11 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	_, err = client.LvCreate(
 		ctx,
 		&proto.LvCreateRequest{
-			VgName: vgName,
-			LvName: lvName,
-			Size:   uint64(20 * (1 << 20)), // FIXME
-			Origin: origLvName,
+			VgName:   vgName,
+			LvName:   lvName,
+			Activate: proto.LvActivationMode_DEACTIVATE,
+			Size:     uint64(20 * (1 << 20)), // FIXME
+			Origin:   origLvName,
 			LvTags: []string{
 				encodeTag(nameTag + req.GetName()),
 				encodeTag(getOwnerTag(cs.nodeId, cs.lvmctrldAddr)),

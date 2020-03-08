@@ -39,7 +39,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 				nil,
 				&proto.LvChangeRequest{
 					Target:   "vg01/lv_test",
-					Activate: proto.LvChangeRequest_ACTIVE_SHARED,
+					Activate: proto.LvActivationMode_ACTIVE_SHARED,
 				},
 			},
 			&proto.LvChangeResponse{},
@@ -58,7 +58,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 				nil,
 				&proto.LvChangeRequest{
 					Target:   "vg01/lv_test",
-					Activate: proto.LvChangeRequest_ACTIVE_EXCLUSIVE,
+					Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
 				},
 			},
 			&proto.LvChangeResponse{},
@@ -77,7 +77,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 				nil,
 				&proto.LvChangeRequest{
 					Target:   "vg01/lv_test",
-					Activate: proto.LvChangeRequest_DEACTIVATE,
+					Activate: proto.LvActivationMode_DEACTIVATE,
 				},
 			},
 			&proto.LvChangeResponse{},
@@ -134,7 +134,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 				nil,
 				&proto.LvChangeRequest{
 					Target:   "vg01/lv_test",
-					Activate: proto.LvChangeRequest_ACTIVE_EXCLUSIVE,
+					Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
 				},
 			},
 			nil,
@@ -153,7 +153,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 				nil,
 				&proto.LvChangeRequest{
 					Target:   "vg01/lv_test",
-					Activate: proto.LvChangeRequest_ACTIVE_EXCLUSIVE,
+					Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
 				},
 			},
 			nil,
@@ -203,16 +203,40 @@ func Test_lvmctrldServer_LvCreate(t *testing.T) {
 			fields{
 				&FakeCommander{
 					t:          t,
-					executions: []FakeCommand{{"lvcreate", []string{"-y", "-L", "1048576b", "--addtag", "tag1", "--addtag", "tag2", "-n", "vg01/lv_test"}, 0, "", "", nil},},
+					executions: []FakeCommand{{"lvcreate", []string{"-y", "-L", "1048576b", "-a", "sy", "--addtag", "tag1", "--addtag", "tag2", "-n", "vg01/lv_test"}, 0, "", "", nil},},
 				},
 			},
 			args{
 				nil,
 				&proto.LvCreateRequest{
-					VgName: "vg01",
-					LvName: "lv_test",
-					Size:   1 << 20,
-					LvTags: []string{"tag1", "tag2"},
+					VgName:   "vg01",
+					LvName:   "lv_test",
+					Size:     1 << 20,
+					Activate: proto.LvActivationMode_ACTIVE_SHARED,
+					LvTags:   []string{"tag1", "tag2"},
+				},
+			},
+			&proto.LvCreateResponse{},
+			false,
+			codes.OK,
+		},
+		{
+			"Create logical volume snapshot",
+			fields{
+				&FakeCommander{
+					t:          t,
+					executions: []FakeCommand{{"lvcreate", []string{"-y", "-L", "1048576b", "-a", "n", "-s", "vg01/lv_test", "--addtag", "tag1", "--addtag", "tag2", "-n", "vg01/lv_snapshot"}, 0, "", "", nil},},
+				},
+			},
+			args{
+				nil,
+				&proto.LvCreateRequest{
+					VgName:   "vg01",
+					LvName:   "lv_snapshot",
+					Size:     1 << 20,
+					Origin:   "vg01/lv_test",
+					Activate: proto.LvActivationMode_DEACTIVATE,
+					LvTags:   []string{"tag1", "tag2"},
 				},
 			},
 			&proto.LvCreateResponse{},
