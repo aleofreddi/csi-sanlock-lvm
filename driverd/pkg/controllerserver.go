@@ -265,22 +265,23 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		VgName: vgName,
 		LvName: lvName,
 	})
-	if err != nil {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, status.Errorf(codes.Internal, "failed to delete volume %s: %s", volumeId, err.Error())
 	}
 
 	// Check if the volume still exists. It could be that lvremove didn't fail but didn't match the volume either (because it is a snapshot origin)
-	_, err = client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role!=snapshot",
-		Target: req.GetVolumeId(),
-	})
 	if err == nil {
-		return nil, status.Error(codes.FailedPrecondition, "failed to delete volume because of dependant snapshot")
+		_, err = client.Lvs(ctx, &proto.LvsRequest{
+			Select: "lv_role!=snapshot",
+			Target: req.GetVolumeId(),
+		})
+		if err == nil {
+			return nil, status.Error(codes.FailedPrecondition, "failed to delete volume because of dependant snapshot")
+		}
+		if status.Code(err) != codes.NotFound {
+			return nil, status.Errorf(codes.Internal, "failed to list volumes")
+		}
 	}
-	if status.Code(err) != codes.NotFound {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes")
-	}
-
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
