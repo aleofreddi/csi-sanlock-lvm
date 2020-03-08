@@ -185,7 +185,7 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Activate volume
 	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   volumeId,
-		Activate: proto.LvChangeRequest_ACTIVE_EXCLUSIVE,
+		Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to activate logical volume: %s", err.Error())
@@ -215,7 +215,7 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// Deactivate volume
 	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   volumeId,
-		Activate: proto.LvChangeRequest_DEACTIVATE,
+		Activate: proto.LvActivationMode_DEACTIVATE,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to deactivate logical volume: %s", err.Error())

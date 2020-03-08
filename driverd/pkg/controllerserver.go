@@ -170,9 +170,10 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	_, err = client.LvCreate(
 		ctx,
 		&proto.LvCreateRequest{
-			VgName: vgName,
-			LvName: lvName,
-			Size:   uint64(req.GetCapacityRange().GetRequiredBytes()),
+			VgName:   vgName,
+			LvName:   lvName,
+			Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
+			Size:     uint64(req.GetCapacityRange().GetRequiredBytes()),
 			LvTags: []string{
 				encodeTag(nameTag + req.GetName()),
 				encodeTag(getOwnerTag(cs.nodeId, cs.lvmctrldAddr)),
@@ -214,7 +215,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Deactivate the volume
 	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   volumeId,
-		Activate: proto.LvChangeRequest_DEACTIVATE,
+		Activate: proto.LvActivationMode_DEACTIVATE,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to deactivate volume: %s", err.Error())
@@ -265,22 +266,23 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		VgName: vgName,
 		LvName: lvName,
 	})
-	if err != nil {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, status.Errorf(codes.Internal, "failed to delete volume %s: %s", volumeId, err.Error())
 	}
 
 	// Check if the volume still exists. It could be that lvremove didn't fail but didn't match the volume either (because it is a snapshot origin)
-	_, err = client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role!=snapshot",
-		Target: req.GetVolumeId(),
-	})
 	if err == nil {
-		return nil, status.Error(codes.FailedPrecondition, "failed to delete volume because of dependant snapshot")
+		_, err = client.Lvs(ctx, &proto.LvsRequest{
+			Select: "lv_role!=snapshot",
+			Target: req.GetVolumeId(),
+		})
+		if err == nil {
+			return nil, status.Error(codes.FailedPrecondition, "failed to delete volume because of dependant snapshot")
+		}
+		if status.Code(err) != codes.NotFound {
+			return nil, status.Errorf(codes.Internal, "failed to list volumes")
+		}
 	}
-	if status.Code(err) != codes.NotFound {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes")
-	}
-
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
@@ -455,10 +457,11 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	_, err = client.LvCreate(
 		ctx,
 		&proto.LvCreateRequest{
-			VgName: vgName,
-			LvName: lvName,
-			Size:   uint64(20 * (1 << 20)), // FIXME
-			Origin: origLvName,
+			VgName:   vgName,
+			LvName:   lvName,
+			Activate: proto.LvActivationMode_DEACTIVATE,
+			Size:     uint64(20 * (1 << 20)), // FIXME
+			Origin:   origLvName,
 			LvTags: []string{
 				encodeTag(nameTag + req.GetName()),
 				encodeTag(getOwnerTag(cs.nodeId, cs.lvmctrldAddr)),
@@ -484,6 +487,13 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	if origLvName != existing.Origin {
 		return nil, status.Errorf(codes.AlreadyExists, "snapshot with the same name: %s but with different SourceVolumeId already exist", req.GetName())
 	}
+
+	// Try to deactivate the origin - this is a workaround for an unexpected lvm behavior. See
+	// https://www.redhat.com/archives/linux-lvm/2020-March/msg00000.html for more context.
+	_, _ = client.LvChange(ctx, &proto.LvChangeRequest{
+		Target:   fmt.Sprintf("%s/%s", vgName, origLvName),
+		Activate: proto.LvActivationMode_DEACTIVATE,
+	})
 	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(lvs.Lvs[0])}, nil
 }
 

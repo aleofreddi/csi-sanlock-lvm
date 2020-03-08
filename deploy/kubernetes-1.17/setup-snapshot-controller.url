@@ -1,0 +1,1 @@
+https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/@@EXTERNAL_SNAPSHOTTER_VERSION@@/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml

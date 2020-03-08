@@ -15,12 +15,12 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: csi-sanlock-lvm-provisioner 
+  name: csi-sanlock-lvm-provisioner
   labels:
-    app: csi-sanlock-lvm-provisioner 
+    app: csi-sanlock-lvm-provisioner
 spec:
   selector:
-    app: csi-sanlock-lvm-provisioner 
+    app: csi-sanlock-lvm-provisioner
   ports:
     - name: dummy
       port: 12345
@@ -44,13 +44,13 @@ spec:
       affinity:
         podAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - csi-sanlock-lvm-plugin
-            topologyKey: kubernetes.io/hostname
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - csi-sanlock-lvm-plugin
+              topologyKey: kubernetes.io/hostname
       serviceAccountName: csi-provisioner
       containers:
         - name: csi-provisioner
