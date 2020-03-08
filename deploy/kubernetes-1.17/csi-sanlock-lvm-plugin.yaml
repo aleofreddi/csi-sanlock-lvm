@@ -37,14 +37,14 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               add:
-              - SYS_MODULE
+                - SYS_MODULE
               drop:
-              - ALL
+                - ALL
             readOnlyRootFilesystem: true
 
       containers:
         - name: driver
-          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.1
+          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.1 # @@version@@
           imagePullPolicy: Always # FIXME for development
           args:
             - "--name=csi-sanlock-lvm.csi.vleo.net"
@@ -70,9 +70,9 @@ spec:
             # created by privileged CSI driver container.
             privileged: true
           ports:
-          - containerPort: 9898
-            name: healthz
-            protocol: TCP
+            - containerPort: 9898
+              name: healthz
+              protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:
@@ -109,7 +109,7 @@ spec:
               name: modules-dir
 
         - name: lvmctrld
-          image: quay.io/aleofreddi/lvmctrld:v0.1
+          image: quay.io/aleofreddi/lvmctrld:v0.1 # @@version@@
           imagePullPolicy: Always # FIXME for development
           args:
             - "--listen=tcp://0.0.0.0:9000"
@@ -125,9 +125,9 @@ spec:
           securityContext:
             privileged: true
           ports:
-          - containerPort: 9000
-            name: lvmctrld
-            protocol: TCP
+            - containerPort: 9000
+              name: lvmctrld
+              protocol: TCP
           volumeMounts:
             - mountPath: /dev
               name: dev-dir
@@ -154,20 +154,20 @@ spec:
                   apiVersion: v1
                   fieldPath: spec.nodeName
           volumeMounts:
-          - mountPath: /csi
-            name: socket-dir
-          - mountPath: /registration
-            name: registration-dir
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /registration
+              name: registration-dir
 
         - name: liveness-probe
           volumeMounts:
-          - mountPath: /csi
-            name: socket-dir
+            - mountPath: /csi
+              name: socket-dir
           image: quay.io/k8scsi/livenessprobe:v1.1.0
           args:
-          - --csi-address=/csi/csi.sock
-          - --connection-timeout=3s
-          - --health-port=9898
+            - --csi-address=/csi/csi.sock
+            - --connection-timeout=3s
+            - --health-port=9898
 
       volumes:
         - hostPath:

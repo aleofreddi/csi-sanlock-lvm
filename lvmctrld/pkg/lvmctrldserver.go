@@ -141,6 +141,7 @@ func (s lvmctrldServer) LvCreate(_ context.Context, req *proto.LvCreateRequest) 
 		"-y",
 		"-L", fmt.Sprintf("%db", req.Size),
 	}
+	args = lvmToActivationMode(args, req.GetActivate())
 	if req.Origin != "" {
 		args = append(args, "-s", req.Origin)
 	}
@@ -218,18 +219,7 @@ func (s lvmctrldServer) LvResize(ctx context.Context, req *proto.LvResizeRequest
 
 func (s lvmctrldServer) LvChange(ctx context.Context, req *proto.LvChangeRequest) (*proto.LvChangeResponse, error) {
 	args := make([]string, 0)
-	if req.GetActivate() != proto.LvChangeRequest_NONE {
-		switch req.GetActivate() {
-		case proto.LvChangeRequest_ACTIVE_EXCLUSIVE:
-			args = append(args, "-a", "ey")
-		case proto.LvChangeRequest_ACTIVE_SHARED:
-			args = append(args, "-a", "sy")
-		case proto.LvChangeRequest_DEACTIVATE:
-			args = append(args, "-a", "n")
-		default:
-			panic(fmt.Sprintf("unknown activate mode %d", req.GetActivate()))
-		}
-	}
+	args = lvmToActivationMode(args, req.GetActivate())
 	for _, tag := range req.AddTag {
 		args = append(args, "--addtag", tag)
 	}
@@ -254,6 +244,22 @@ func runReport(cmd commander, exe string, args ...string) (*lvmReport, error) {
 		return nil, fmt.Errorf("failed to deserialize lvm report with error %v: %q", err, stdout)
 	}
 	return &result, nil
+}
+
+func lvmToActivationMode(args []string, activationMode proto.LvActivationMode) []string {
+	if activationMode == proto.LvActivationMode_NONE {
+		return args
+	}
+	switch activationMode {
+	case proto.LvActivationMode_ACTIVE_EXCLUSIVE:
+		return append(args, "-a", "ey")
+	case proto.LvActivationMode_ACTIVE_SHARED:
+		return append(args, "-a", "sy")
+	case proto.LvActivationMode_DEACTIVATE:
+		return append(args, "-a", "n")
+	default:
+		panic(fmt.Sprintf("unknown activation mode %d", activationMode))
+	}
 }
 
 func lvmToVolumeGroup(vg *lvmReportVgs) *proto.VolumeGroup {
@@ -308,9 +314,6 @@ func parseLvmError(code int, stdout, stderr []byte) error {
 	// Check stderr to identify the failure reason
 	if lvExists.Match(stderr) {
 		return status.Errorf(codes.AlreadyExists, "target already exists")
-	}
-	if lvLockedRe.Match(stderr) {
-		return status.Errorf(codes.PermissionDenied, "target is locked by another host")
 	}
 	if lvLockedRe.Match(stderr) {
 		return status.Errorf(codes.PermissionDenied, "target is locked by another host")
