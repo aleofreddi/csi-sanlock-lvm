@@ -98,6 +98,7 @@ message LvChangeRequest {
     LvActivationMode activate = 2;
     repeated string add_tag = 3;
     repeated string del_tag = 4;
+    string select = 5;
 }
 
 message LvChangeResponse {
