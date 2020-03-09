@@ -226,6 +226,9 @@ func (s lvmctrldServer) LvChange(ctx context.Context, req *proto.LvChangeRequest
 	for _, tag := range req.DelTag {
 		args = append(args, "--deltag", tag)
 	}
+	if req.GetSelect() != "" {
+		args = append(args, "-S", req.GetSelect())
+	}
 	args = append(args, req.GetTarget())
 	code, stdout, stderr, err := s.cmd.Exec("lvchange", args...)
 	if code != 0 || err != nil {
