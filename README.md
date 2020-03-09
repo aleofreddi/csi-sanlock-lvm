@@ -67,7 +67,7 @@ $ kubectl create namespace csi-sanlock-lvm-system
 And then deploy using `kustomization`:
 
 ```shell
-$ kubectl apply -k deploy/kubernetes-1.17
+$ kubectl apply -k 'https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-1.17?ref=v0.1'
 ```
 
 On a successful installation, all csi pods should be running (with the exception
@@ -92,13 +92,13 @@ The examples directory contains an example configuration that will spin up a pvc
 and pod using it:
 
 ```shell
-$ kubectl apply -k examples/pvc.yaml examples/pod.yaml
+$ kubectl apply -f examples/pvc.yaml examples/pod.yaml
 ```
 
 You can also create a snapshot of the volume using the `snap.yaml`:
 
 ```shell
-$ kubectl apply -k examples/snap.yaml
+$ kubectl apply -f examples/snap.yaml
 ```
 
 ## Building the binaries
