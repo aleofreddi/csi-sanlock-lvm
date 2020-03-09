@@ -85,6 +85,26 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			codes.OK,
 		},
 		{
+			"Filter select",
+			fields{
+				&FakeCommander{
+					t:          t,
+					executions: []FakeCommand{{"lvchange", []string{"-a", "ey", "-S", "lv_size>0", "vg01/lv_test"}, 0, "", "", nil},},
+				},
+			},
+			args{
+				nil,
+				&proto.LvChangeRequest{
+					Target:   "vg01/lv_test",
+					Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
+					Select:   "lv_size>0",
+				},
+			},
+			&proto.LvChangeResponse{},
+			false,
+			codes.OK,
+		},
+		{
 			"Add tags",
 			fields{
 				&FakeCommander{
@@ -123,7 +143,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			codes.OK,
 		},
 		{
-			"Non existent volume group",
+			"Fail when non existent volume group",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -142,7 +162,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			codes.NotFound,
 		},
 		{
-			"Non existent logical volume",
+			"Fail when non existent logical volume",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -244,7 +264,7 @@ func Test_lvmctrldServer_LvCreate(t *testing.T) {
 			codes.OK,
 		},
 		{
-			"Fail to create logical volume: insufficient free space",
+			"Fail when insufficient free space",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -265,7 +285,7 @@ func Test_lvmctrldServer_LvCreate(t *testing.T) {
 			codes.OutOfRange,
 		},
 		{
-			"Fail to create logical volume: invalid volume group",
+			"Fail when invalid volume group",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -286,7 +306,7 @@ func Test_lvmctrldServer_LvCreate(t *testing.T) {
 			codes.NotFound,
 		},
 		{
-			"Fail to create logical volume: already exists",
+			"Fail when logical volume already exists",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -349,7 +369,7 @@ func Test_lvmctrldServer_LvRemove(t *testing.T) {
 			fields{
 				&FakeCommander{
 					t:          t,
-					executions: []FakeCommand{{"lvremove", []string{"-f", "vg01/lv_test"}, 0, "", "", nil},},
+					executions: []FakeCommand{{"lvremove", []string{"-f", "-S", "lv_size>0", "vg01/lv_test",}, 0, "", "", nil},},
 				},
 			},
 			args{
@@ -357,6 +377,7 @@ func Test_lvmctrldServer_LvRemove(t *testing.T) {
 				&proto.LvRemoveRequest{
 					VgName: "vg01",
 					LvName: "lv_test",
+					Select: "lv_size>0",
 				},
 			},
 			&proto.LvRemoveResponse{},
@@ -364,7 +385,7 @@ func Test_lvmctrldServer_LvRemove(t *testing.T) {
 			codes.OK,
 		},
 		{
-			"Fail to remove logical volume: invalid logical volume",
+			"Fail when invalid logical volume",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -383,7 +404,7 @@ func Test_lvmctrldServer_LvRemove(t *testing.T) {
 			codes.NotFound,
 		},
 		{
-			"Fail to create logical volume: invalid volume group",
+			"Fail when invalid volume group",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -460,7 +481,7 @@ func Test_lvmctrldServer_LvResize(t *testing.T) {
 			codes.OK,
 		},
 		{
-			"Fail to resize logical volume: invalid volume group",
+			"Fail when invalid volume group",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -480,7 +501,7 @@ func Test_lvmctrldServer_LvResize(t *testing.T) {
 			codes.NotFound,
 		},
 		{
-			"Fail to resize logical volume: invalid logical volume",
+			"Fail when invalid logical volume",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -597,7 +618,7 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			codes.OK,
 		},
 		{
-			"Fail to list logical volumes: invalid volume group",
+			"Fail when invalid volume group",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -616,7 +637,7 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			codes.NotFound,
 		},
 		{
-			"Fail to remove logical volume: invalid logical volume",
+			"Fail when invalid logical volume",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -632,6 +653,71 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			nil,
 			true,
 			codes.NotFound,
+		},
+		{
+			"Fail when report contains invalid JSON",
+			fields{
+				&FakeCommander{
+					t:          t,
+					executions: []FakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0, "{\"invalid\": \"json", "", nil},},},
+			},
+			args{
+				nil,
+				&proto.LvsRequest{
+					Target: "vg01",
+					Select: "field=value",
+				},
+			},
+			nil,
+			true,
+			codes.Unknown,
+		},
+		{
+			"Fail when report contain multiple report entries",
+			fields{
+				&FakeCommander{
+					t:          t,
+					executions: []FakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0, `{ "report": [ {},{} ] }`, "", nil},},},
+			},
+			args{
+				nil,
+				&proto.LvsRequest{
+					Target: "vg01",
+					Select: "field=value",
+				},
+			},
+			nil,
+			true,
+			codes.Unknown,
+		},
+		{
+			"Fail when report contains invalid timestamp",
+			fields{
+				&FakeCommander{
+					t: t,
+					executions: []FakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0,
+						`
+  {
+      "report": [
+          {
+              "lv": [
+                  {"lv_name":"lv1", "vg_name":"vg1", "lv_attr":"-wi-a-----", "lv_size":"33554432", "pool_lv":"", "origin":"", "data_percent":"", "metadata_percent":"", "move_pv":"", "mirror_log":"", "copy_percent":"", "convert_lv":"", "lv_tags":"", "lv_role":"public", "lv_time":"2020-00-00 20:57:35 +0000"}
+              ]
+          }
+      ]
+  }
+`, "", nil},},},
+			},
+			args{
+				nil,
+				&proto.LvsRequest{
+					Target: "vg01",
+					Select: "field=value",
+				},
+			},
+			nil,
+			true,
+			codes.Unknown,
 		},
 	}
 	for _, tt := range tests {
@@ -723,7 +809,7 @@ func Test_lvmctrldServer_Vgs(t *testing.T) {
 			codes.OK,
 		},
 		{
-			"Fail to list volume groups: invalid volume group",
+			"Fail when invalid volume group",
 			fields{
 				&FakeCommander{
 					t:          t,
@@ -740,6 +826,42 @@ func Test_lvmctrldServer_Vgs(t *testing.T) {
 			nil,
 			true,
 			codes.NotFound,
+		},
+		{
+			"Fail when report contains invalid JSON",
+			fields{
+				&FakeCommander{
+					t:          t,
+					executions: []FakeCommand{{"vgs", []string{"--options", "vg_name,pv_count,lv_count,snap_count,vg_attr,vg_size,vg_free,vg_tags", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01",}, 0, "{\"invalid\": \"json", "", nil},},},
+			},
+			args{
+				nil,
+				&proto.VgsRequest{
+					Target: "vg01",
+					Select: "field=value",
+				},
+			},
+			nil,
+			true,
+			codes.Unknown,
+		},
+		{
+			"Fail when report contain multiple report entries",
+			fields{
+				&FakeCommander{
+					t:          t,
+					executions: []FakeCommand{{"vgs", []string{"--options", "vg_name,pv_count,lv_count,snap_count,vg_attr,vg_size,vg_free,vg_tags", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01",}, 0, `{ "report": [ {},{} ] }`, "", nil},},},
+			},
+			args{
+				nil,
+				&proto.VgsRequest{
+					Target: "vg01",
+					Select: "field=value",
+				},
+			},
+			nil,
+			true,
+			codes.Unknown,
 		},
 	}
 	for _, tt := range tests {
