@@ -488,11 +488,12 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		return nil, status.Errorf(codes.AlreadyExists, "snapshot with the same name: %s but with different SourceVolumeId already exist", req.GetName())
 	}
 
-	// Try to deactivate the origin - this is a workaround for an unexpected lvm behavior. See
+	// Force origin deactivate if it is not active. This is a workaround for an unexpected lvm behavior. See
 	// https://www.redhat.com/archives/linux-lvm/2020-March/msg00000.html for more context.
 	_, _ = client.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   fmt.Sprintf("%s/%s", vgName, origLvName),
 		Activate: proto.LvActivationMode_DEACTIVATE,
+		Select:   "lv_active!=active",
 	})
 	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(lvs.Lvs[0])}, nil
 }
