@@ -40,7 +40,8 @@ const (
 )
 
 var (
-	vgRe = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	volumeIdRe = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*/[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	vgRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
 )
 
 type volumeAccessType int
@@ -246,8 +247,9 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	// Check arguments
-	if req.GetVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	volumeId := req.GetVolumeId()
+	if !volumeIdRe.MatchString(volumeId) {
+		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	// Connect to lvmctrld
@@ -257,7 +259,6 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 	defer client.Close()
 
-	volumeId := req.GetVolumeId()
 	vgName, lvName := volumeIdToVgLv(volumeId)
 
 	// Try to remove the volume. If it's an origin for some snapshot, it will be skipped
@@ -288,8 +289,9 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 
 func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// Check arguments
-	if req.GetVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	volumeId := req.GetVolumeId()
+	if !volumeIdRe.MatchString(volumeId) {
+		return nil, status.Error(codes.InvalidArgument, "invalid volume id")
 	}
 	if len(req.VolumeCapabilities) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "missing volume capabilities")
@@ -304,7 +306,7 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 
 	volume, err := client.Lvs(ctx, &proto.LvsRequest{
 		Select: "lv_role!=snapshot",
-		Target: req.GetVolumeId(),
+		Target: volumeId,
 	})
 	if err != nil {
 		return nil, status.Error(codes.NotFound, req.GetVolumeId())
@@ -359,21 +361,22 @@ func (cs *controllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 }
 
 func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	if req.GetVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	// Check arguments
+	volumeId := req.GetVolumeId()
+	if !volumeIdRe.MatchString(volumeId) {
+		return nil, status.Error(codes.InvalidArgument, "invalid volume id")
 	}
 	if req.GetCapacityRange() == nil {
 		return nil, status.Error(codes.InvalidArgument, "missing capacity range")
 	}
 
 	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewForVolume(req.GetVolumeId(), ctx)
+	client, err := cs.lvmctrldClientFactory.NewForVolume(volumeId, ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
 	}
 	defer client.Close()
 
-	volumeId := req.GetVolumeId()
 	vgName, lvName := volumeIdToVgLv(volumeId)
 
 	// Retrieve current size
@@ -438,8 +441,8 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing snapshot name")
 	}
-	if req.GetSourceVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing source volume id")
+	if !volumeIdRe.MatchString(req.GetSourceVolumeId()) {
+		return nil, status.Error(codes.InvalidArgument, "invalid source volume id")
 	}
 
 	// Connect to lvmctrld
@@ -500,8 +503,9 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	// Check arguments
-	if req.GetSnapshotId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing snapshot id")
+	volumeId := req.GetSnapshotId()
+	if !volumeIdRe.MatchString(volumeId) {
+		return &csi.DeleteSnapshotResponse{}, nil
 	}
 
 	// Connect to lvmctrld
@@ -511,10 +515,8 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	}
 	defer client.Close()
 
-	volumeId := req.GetSnapshotId()
-	vgName, lvName := volumeIdToVgLv(volumeId)
-
 	// Remove volume
+	vgName, lvName := volumeIdToVgLv(volumeId)
 	_, err = client.LvRemove(ctx, &proto.LvRemoveRequest{
 		VgName: vgName,
 		LvName: lvName,
@@ -529,10 +531,20 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	filters := []string{"lv_role=snapshot"}
 	if req.GetSnapshotId() != "" {
+		if !volumeIdRe.MatchString(req.GetSnapshotId()) {
+			return &csi.ListSnapshotsResponse{
+				Entries: nil,
+			}, nil
+		}
 		vgName, lvName := volumeIdToVgLv(req.GetSnapshotId())
 		filters = append(filters, "vg_name="+vgName, "lv_name="+lvName)
 	}
 	if req.GetSourceVolumeId() != "" {
+		if !volumeIdRe.MatchString(req.GetSourceVolumeId()) {
+			return &csi.ListSnapshotsResponse{
+				Entries: nil,
+			}, nil
+		}
 		vgName, lvName := volumeIdToVgLv(req.GetSourceVolumeId())
 		filters = append(filters, "vg_name="+vgName, "origin="+lvName)
 	}

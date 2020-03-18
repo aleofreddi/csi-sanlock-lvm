@@ -116,8 +116,11 @@ func (l *listener) Run() error {
 
 func parseAddress(addr string) (string, string, error) {
 	u, err := url.Parse(addr)
-	if err != nil || u.Host != "" && u.Path != "" {
+	if err != nil {
 		return "", "", fmt.Errorf("failed to parse listen address: %s", err.Error())
+	}
+	if u.Host != "" && u.Path != "" {
+		return "", "", fmt.Errorf("failed to parse listen address: invalid address")
 	}
 	if u.Host != "" {
 		return u.Scheme, u.Host, nil
