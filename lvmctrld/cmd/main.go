@@ -26,8 +26,8 @@ import (
 )
 
 var (
-	hostAddr = flag.String("host-id-addr", "", "compute host id from ip address, mutually exclusive with host-id")
-	hostId   = flag.String("host-id", "", "host id, mutually exclusive with host-id-addr")
+	hostAddr = flag.String("lock-with-host-addr", "", "enable locking, compute host id from the given ip address. This options is mutually exclusive with lock-with-host-id")
+	hostId   = flag.String("lock-with-host-id", "", "enable locking, use the given host id. This option is mutually exclusive with lock-with-host-addr")
 	listen   = flag.String("listen", "tcp://0.0.0.0:9000", "listen address")
 	version  string
 )
@@ -38,14 +38,20 @@ func main() {
 	klog.Infof("Starting lvmctrld %s", version)
 
 	// Parse host id
-	id, err := parseHostId(*hostId, *hostAddr)
-	if err != nil {
-		klog.Errorf("Failed to parse host id: %s", err.Error())
-		os.Exit(1)
+	if *hostId != "" || *hostAddr != "" {
+		id, err := parseHostId(*hostId, *hostAddr)
+		if err != nil {
+			klog.Errorf("Failed to parse host id: %s", err.Error())
+			os.Exit(1)
+		}
+		if err := lvmctrld.StartLock(id, []string{}); err != nil {
+			klog.Errorf("Failed to start lock: %s", err.Error())
+			os.Exit(2)
+		}
 	}
 
 	// Start server
-	listener, err := lvmctrld.NewListener(id, *listen)
+	listener, err := lvmctrld.NewListener(*listen)
 	if err != nil {
 		klog.Errorf("Failed to instance listener: %s", err.Error())
 		os.Exit(1)

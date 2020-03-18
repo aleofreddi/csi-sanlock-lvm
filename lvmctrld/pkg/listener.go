@@ -25,15 +25,13 @@ import (
 )
 
 type listener struct {
-	hostId uint16
 	lsAddr string
 
 	ls *lvmctrldServer
 }
 
-func NewListener(hostId uint16, lsAddr string) (*listener, error) {
+func NewListener(lsAddr string) (*listener, error) {
 	return &listener{
-		hostId: hostId,
 		lsAddr: lsAddr,
 
 		ls: NewLvmctrldServer(),
@@ -41,9 +39,6 @@ func NewListener(hostId uint16, lsAddr string) (*listener, error) {
 }
 
 func (l *listener) Init() error {
-	if err := StartLock(l.hostId, []string{}); err != nil {
-		return fmt.Errorf("failed to initialize lock: %s", err.Error())
-	}
 	return nil
 }
 

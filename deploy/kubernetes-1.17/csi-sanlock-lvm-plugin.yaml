@@ -43,7 +43,7 @@ spec:
             readOnlyRootFilesystem: true
 
       containers:
-        - name: driver
+        - name: driverd
           image: quay.io/aleofreddi/csi-lvm-sanlock:v0.1 # @@version@@
           imagePullPolicy: Always # FIXME for development
           args:
@@ -113,7 +113,7 @@ spec:
           imagePullPolicy: Always # FIXME for development
           args:
             - "--listen=tcp://0.0.0.0:9000"
-            - "--host-id-addr=$(NODE_IP)"
+            - "--lock-with-host-addr=$(NODE_IP)"
             - "--v=5"
           env:
             - name: CSI_ENDPOINT
