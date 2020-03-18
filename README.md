@@ -86,6 +86,20 @@ csi-sanlock-lvm-snapshotter-0   1/1     Running     0          4h41m
 snapshot-controller-0           1/1     Running     0          4h41m
 ```
 
+### Setup storage and snapshot classes
+
+To enable the csi-sanlock-lvm driver you need to configure it via the
+`StorageClass` and `SnapshotClass` objects.
+
+A configuration example is provided at `conf/csi-sanlock-lvm-storageclass.yaml`
+and `conf/csi-sanlock-lvm-snapshotclass.yaml`.
+
+The following storage class parameters are supported:
+
+- `volumeGroup` _(required)_: the volume group to use when provisioning logical
+  volumes;
+- `filesystem` _(required)_: the filesystem to use (ex. `ext4`).
+
 ## Example application
 
 The examples directory contains an example configuration that will spin up a pvc
