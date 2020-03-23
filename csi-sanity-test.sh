@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Copyright 2020 Google LLC
 #
@@ -15,21 +15,25 @@
 # limitations under the License.
 
 die() {
-	echo "$@" >&2
-	exit 10
+    echo "ERROR: $@" >&2
+    exit 10
 }
 
-if ! which csi-sanity 2>/dev/null; then
-	echo "$0 requires csi-sanity: go get github.com/kubernetes-csi/csi-test/cmd/csi-sanity" >&2
-	exit 1
-fi
-
-if [[ `uname` != Linux ]]; then
-    echo "$0 requires a linux machine" >&2
-    exit 2
-fi
-
+me="$(basename $0)"
+rootdir="$(dirname $0)"
 rollback=:
+
+[[ "$(uname | tr [A-Z] [a-z])" = linux ]] || die "$me requires a Linux machine"
+
+for i in \
+    'csi-sanity:install using `go get github.com/kubernetes-csi/csi-test/cmd/csi-sanity`' \
+    'fallocate:install the proper package' \
+    'losetup:install the proper package' \
+    'pvcreate:install lvm tools' \
+    'vgcreate:install lvm tools'; do
+    IFS=: read f d <<<"$i"
+    which "$f" >/dev/null 2>&1 || die "$me requires $f, $d"
+done
 
 tmpdir=`mktemp -d /tmp/csi-sanity-$$.XXXXX` || die Failed to allocate a temporary directory
 rollback="echo Removing temporary directory \"$tmpdir\"; rm -rf \"$tmpdir\"; $rollback"
@@ -47,12 +51,12 @@ pvcreate -f $device || die Failed to create physical device
 vgcreate vg_csi_sanity_$$ $device || die Failed to create volume group
 
 lvmctrld_sock="unix://$tmpdir/lvmctrld.sock"
-./lvmctrld/bin/lvmctrld --listen "$lvmctrld_sock" &
+"$rootdir"/lvmctrld/bin/lvmctrld --listen "$lvmctrld_sock" &
 rollback="echo Killing lvmctrld pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
 trap "$rollback" EXIT
 
 driverd_sock="unix://$tmpdir/driverd.sock"
-./driverd/bin/driverd --lvmctrld "$lvmctrld_sock" --node-id node --listen "$driverd_sock" &
+"$rootdir"/driverd/bin/driverd --lvmctrld "$lvmctrld_sock" --node-id node --listen "$driverd_sock" &
 rollback="echo Killing driverd pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
 trap "$rollback" EXIT
 
@@ -63,10 +67,10 @@ volumeGroup: vg_csi_sanity_$$
 EOF
 
 csi-sanity \
-	--csi.endpoint "$driverd_sock" \
-	--csi.mountdir "$tmpdir/mount" \
-	--csi.stagingdir "$tmpdir/staging" \
-	--csi.testvolumeparameters "$param_file" \
-	--csi.testvolumesize $((1024*1024)) \
+    --csi.endpoint "$driverd_sock" \
+    --csi.mountdir "$tmpdir/mount" \
+    --csi.stagingdir "$tmpdir/staging" \
+    --csi.testvolumeparameters "$param_file" \
+    --csi.testvolumesize $((1024*1024)) \
 
 exit $?
