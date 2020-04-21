@@ -49,6 +49,8 @@ type volumeAccessType int
 const (
 	MOUNT_ACCESS_TYPE volumeAccessType = iota
 	BLOCK_ACCESS_TYPE
+
+	BLOCK_ACCESS_FS_NAME = "raw"
 )
 
 var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct{}{
@@ -149,10 +151,18 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if !vgRe.MatchString(vgName) {
 		return nil, status.Error(codes.InvalidArgument, "invalid volume group parameter")
 	}
-	fsName, present := req.Parameters[fsParamKey]
-	if !present || fsName == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing filesystem parameter")
+	var fsName string
+	if *accessType == BLOCK_ACCESS_TYPE {
+		fsName = BLOCK_ACCESS_FS_NAME
+	} else {
+		var present bool
+		fsName, present = req.Parameters[fsParamKey]
+		if !present || fsName == "" {
+			return nil, status.Error(codes.InvalidArgument, "missing filesystem parameter")
+		}
 	}
+
+	// Retrieve filesystem
 	fs, err := NewFileSystem(fsName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to lookup filesystem: %s", err.Error())
@@ -206,7 +216,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Errorf(codes.Internal, "failed to create volume %s: %s", req.GetName(), err.Error())
 	}
 
-	// If creation was successful, format the volume
+	// Format the volume if needed
 	klog.Infof("Formatting volume")
 	err = fs.Make("/dev/" + volumeId)
 	if err != nil {

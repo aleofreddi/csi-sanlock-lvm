@@ -21,7 +21,6 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"os"
 	"strings"
@@ -85,45 +84,57 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if req.GetTargetPath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing target path")
 	}
+	if (req.GetVolumeCapability().GetBlock() == nil) == (req.GetVolumeCapability().GetMount() == nil) {
+		return nil, status.Error(codes.InvalidArgument, "inconsistent access type")
+	}
 
 	volumeId := req.GetVolumeId()
 	devicePath := fmt.Sprintf("/dev/%s", volumeId)
 	targetPath := req.GetTargetPath()
 
-	if req.GetVolumeCapability().GetBlock() != nil && req.GetVolumeCapability().GetMount() != nil {
-		return nil, status.Error(codes.InvalidArgument, "inconsistent access type")
+	// Decode access type from request
+	var accessType volumeAccessType
+	if req.GetVolumeCapability().GetMount() != nil {
+		accessType = MOUNT_ACCESS_TYPE
+	} else {
+		accessType = BLOCK_ACCESS_TYPE
 	}
 
-	mounted, err := mount.New("").IsLikelyNotMountPoint(targetPath)
+	// Connect to lvmctrld
+	client, err := ns.lvmctrldClientFactory.NewLocal()
 	if err != nil {
-		if os.IsExist(err) {
-			return nil, status.Errorf(codes.Internal, "failed to determine if %s is mounted: %s", targetPath, err.Error())
-		}
-		if err := os.MkdirAll(targetPath, 0750); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to mkdir %s: %s", targetPath, err.Error())
-		}
-		mounted = true
+		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+	}
+	defer client.Close()
+
+	// Retrieve the filesystem type for the volume
+	lv, err := findLogicalVolume(ctx, client, volumeId)
+	if err != nil {
+		return nil, err
 	}
 
-	if mounted {
-		// Get Options
-		var options []string
-		if req.GetReadonly() {
-			options = append(options, "ro")
-		} else {
-			options = append(options, "rw")
-		}
+	// Extract the filesystem
+	fs, err := getFileSystem(lv)
+	if err != nil {
+		return nil, err
+	}
+	if !fs.Accepts(accessType) {
+		return nil, status.Error(codes.InvalidArgument, "incompatible access type for this volume")
+	}
+
+	var mountFlags []string
+	if accessType == MOUNT_ACCESS_TYPE {
 		mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
-		options = append(options, mountFlags...)
-
-		// Mount
-		mounter := mount.New("")
-		err = mounter.Mount(devicePath, targetPath, "ext4", options)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+		if req.GetReadonly() {
+			mountFlags = append(mountFlags, "ro")
+		} else {
+			mountFlags = append(mountFlags, "rw")
 		}
 	}
 
+	if err = fs.Mount(devicePath, targetPath, mountFlags); err != nil {
+		return nil, err
+	}
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
@@ -136,19 +147,15 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.InvalidArgument, "missing target path")
 	}
 
-	volumeId := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
-
-	accessType := MOUNT_ACCESS_TYPE
-	switch accessType {
-	case MOUNT_ACCESS_TYPE:
-		err := mount.New("").Unmount(targetPath)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to unmount %q: %s", targetPath, err.Error())
-		}
-		klog.V(4).Infof("Volume %s/%s has been unmounted", targetPath, volumeId)
+	err := mount.New("").Unmount(targetPath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to unmount %q: %s", targetPath, err.Error())
 	}
 
+	if err = os.RemoveAll(targetPath); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to remove %q: %s", targetPath, err.Error())
+	}
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
@@ -252,6 +259,27 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	defer client.Close()
 
 	// Retrieve the filesystem type for the volume
+	lv, err := findLogicalVolume(ctx, client, volumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract the filesystem
+	fs, err := getFileSystem(lv)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resize the filesystem
+	err = fs.Grow("/dev/" + volumeId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to resize filesystem: %s", err.Error())
+	}
+
+	return &csi.NodeExpandVolumeResponse{}, nil
+}
+
+func findLogicalVolume(ctx context.Context, client *LvmCtrldClientConnection, volumeId string) (*proto.LogicalVolume, error) {
 	lvs, err := client.Lvs(ctx, &proto.LvsRequest{
 		Select: "lv_role!=snapshot",
 		Target: volumeId,
@@ -261,26 +289,19 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list volumes: %s", err.Error())
 	}
+	return lvs.Lvs[0], nil
+}
+
+func getFileSystem(lv *proto.LogicalVolume) (FileSystem, error) {
 	fsName := ""
-	for _, encodedTag := range lvs.Lvs[0].LvTags {
+	for _, encodedTag := range lv.LvTags {
 		decodedTag, _ := decodeTag(encodedTag)
 		if strings.HasPrefix(decodedTag, fsTag) {
 			if len(fsName) > 0 {
-				return nil, status.Errorf(codes.Internal, "volume %s has multiple filesystem tags", volumeId)
+				return nil, status.Errorf(codes.Internal, "volume %s/%s has multiple filesystem tags", lv.VgName, lv.LvName)
 			}
 			fsName = decodedTag[len(fsTag):]
 		}
 	}
-
-	// Resize the filesystem
-	fs, err := NewFileSystem(fsName)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to lookup filesystem: %s", err.Error())
-	}
-	err = fs.Grow("/dev/" + volumeId)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to resize filesystem: %s", err.Error())
-	}
-
-	return &csi.NodeExpandVolumeResponse{}, nil
+	return NewFileSystem(fsName)
 }
