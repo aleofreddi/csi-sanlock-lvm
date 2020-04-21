@@ -39,11 +39,13 @@ type LvmCtrldClientFactory interface {
 }
 
 type concreteLvmCtrldClientFactory struct {
+	lvmAddr string
 	timeout time.Duration
 }
 
-func NewLvmCtrldClientFactory(timeout time.Duration) (LvmCtrldClientFactory, error) {
+func NewLvmCtrldClientFactory(lvmAddr string, timeout time.Duration) (LvmCtrldClientFactory, error) {
 	return &concreteLvmCtrldClientFactory{
+		lvmAddr: lvmAddr,
 		timeout: timeout,
 	}, nil
 }
@@ -97,7 +99,7 @@ func (f *concreteLvmCtrldClientFactory) NewForVolume(volumeId string, ctx contex
 }
 
 func (f *concreteLvmCtrldClientFactory) NewLocal() (*LvmCtrldClientConnection, error) {
-	return f.NewRemote("tcp://127.0.0.1:9000")
+	return f.NewRemote(f.lvmAddr)
 }
 
 func (f *concreteLvmCtrldClientFactory) NewRemote(address string) (*LvmCtrldClientConnection, error) {

@@ -55,7 +55,7 @@ func NewListener(name, version, nodeId, lsAddr, lvmAddr string) (*listener, erro
 		return nil, fmt.Errorf("missing lvmctrld address")
 	}
 
-	cf, err := NewLvmCtrldClientFactory(30 * time.Second)
+	cf, err := NewLvmCtrldClientFactory(lvmAddr, 30 * time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance lvmctrld client factory: %s", err.Error())
 	}
