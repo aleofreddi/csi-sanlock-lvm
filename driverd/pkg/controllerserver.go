@@ -258,6 +258,9 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	// Check arguments
 	volumeId := req.GetVolumeId()
+	if volumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	}
 	if !volumeIdRe.MatchString(volumeId) {
 		return &csi.DeleteVolumeResponse{}, nil
 	}
@@ -514,6 +517,9 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	// Check arguments
 	volumeId := req.GetSnapshotId()
+	if volumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing snapshot id")
+	}
 	if !volumeIdRe.MatchString(volumeId) {
 		return &csi.DeleteSnapshotResponse{}, nil
 	}
