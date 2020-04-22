@@ -54,7 +54,7 @@ const (
 )
 
 var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct{}{
-	csi.ControllerServiceCapability_RPC_CLONE_VOLUME:           {},
+	//csi.ControllerServiceCapability_RPC_CLONE_VOLUME:           {}, // Not implemented yet
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: {},
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   {},
 	csi.ControllerServiceCapability_RPC_EXPAND_VOLUME:          {},
