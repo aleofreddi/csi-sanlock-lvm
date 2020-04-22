@@ -8,7 +8,7 @@ SRC=\
 TEST=\
 ./pkg/tagencoder_test.go 
 
-VERSION=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
+VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
 
 all:	build test
 
@@ -24,7 +24,7 @@ test: $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
 build-image:
-	docker build -t quay.io/aleofreddi/csi-lvm-sanlock:$(VERSION) -f Dockerfile ..
+	docker build --build-arg VERSION='$(VERSION)' -t quay.io/aleofreddi/csi-lvm-sanlock:'$(VERSION)' -f Dockerfile ..
 
 push-image: build-image
-	docker push quay.io/aleofreddi/csi-lvm-sanlock:$(VERSION)
+	docker push quay.io/aleofreddi/csi-lvm-sanlock:'$(VERSION)'

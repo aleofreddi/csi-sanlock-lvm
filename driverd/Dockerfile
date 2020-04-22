@@ -15,6 +15,8 @@
 FROM golang:1.13 AS builder
 
 RUN apt-get update && apt-get install -y protobuf-compiler golang-goprotobuf-dev
+
+ARG VERSION
 ADD . /src
 RUN make -C /src clean build@driverd
 
