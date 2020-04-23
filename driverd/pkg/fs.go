@@ -25,11 +25,10 @@ import (
 )
 
 type FileSystem interface {
+	Accepts(accessType volumeAccessType) bool
 	Make(device string) error
 	Grow(device string) error
 	Mount(source, mountPoint string, flags []string) error
-	FsType() string
-	Accepts(accessType volumeAccessType) bool
 }
 
 type rawFileSystem struct {
@@ -40,7 +39,7 @@ type ext4FileSystem struct {
 
 func NewFileSystem(fs string) (FileSystem, error) {
 	switch fs {
-	case BLOCK_ACCESS_FS_NAME:
+	case BlockAccessFsName:
 		return &rawFileSystem{}, nil
 	case "ext4":
 		return &ext4FileSystem{}, nil
@@ -56,12 +55,8 @@ func (fs *rawFileSystem) Grow(device string) error {
 	return nil
 }
 
-func (fs *rawFileSystem) FsType() string {
-	return ""
-}
-
 func (fs *rawFileSystem) Accepts(accessType volumeAccessType) bool {
-	return accessType == BLOCK_ACCESS_TYPE
+	return accessType == BlockAccessType
 }
 
 func (fs *rawFileSystem) Mount(source, mountPoint string, flags []string) error {
@@ -85,7 +80,7 @@ func (fs *rawFileSystem) Mount(source, mountPoint string, flags []string) error 
 
 		// Mount
 		mounter := mount.New("")
-		err = mounter.Mount(source, mountPoint, fs.FsType(), options)
+		err = mounter.Mount(source, mountPoint, "", options)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -115,12 +110,8 @@ func (fs *ext4FileSystem) Grow(device string) error {
 	return nil
 }
 
-func (fs *ext4FileSystem) FsType() string {
-	return "ext4"
-}
-
 func (fs *ext4FileSystem) Accepts(accessType volumeAccessType) bool {
-	return accessType == MOUNT_ACCESS_TYPE
+	return accessType == MountAccessType
 }
 
 func (fs *ext4FileSystem) Mount(source, mountPoint string, flags []string) error {
@@ -137,7 +128,7 @@ func (fs *ext4FileSystem) Mount(source, mountPoint string, flags []string) error
 	}
 
 	if mounted {
-		err = mounter.Mount(source, mountPoint, fs.FsType(), flags)
+		err = mounter.Mount(source, mountPoint, "ext4", flags)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}

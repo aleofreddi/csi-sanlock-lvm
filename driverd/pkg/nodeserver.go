@@ -95,9 +95,9 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// Decode access type from request
 	var accessType volumeAccessType
 	if req.GetVolumeCapability().GetMount() != nil {
-		accessType = MOUNT_ACCESS_TYPE
+		accessType = MountAccessType
 	} else {
-		accessType = BLOCK_ACCESS_TYPE
+		accessType = BlockAccessType
 	}
 
 	// Connect to lvmctrld
@@ -123,7 +123,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	var mountFlags []string
-	if accessType == MOUNT_ACCESS_TYPE {
+	if accessType == MountAccessType {
 		mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
 		if req.GetReadonly() {
 			mountFlags = append(mountFlags, "ro")

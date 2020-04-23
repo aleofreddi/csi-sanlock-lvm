@@ -49,10 +49,10 @@ var (
 type volumeAccessType int
 
 const (
-	MOUNT_ACCESS_TYPE volumeAccessType = iota
-	BLOCK_ACCESS_TYPE
+	MountAccessType volumeAccessType = iota
+	BlockAccessType
 
-	BLOCK_ACCESS_FS_NAME = "raw"
+	BlockAccessFsName = "raw"
 )
 
 var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct{}{
@@ -121,10 +121,10 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 		var capAccessType *volumeAccessType
 		if cap.GetMount() != nil {
-			v := MOUNT_ACCESS_TYPE
+			v := MountAccessType
 			capAccessType = &v
 		} else if cap.GetBlock() != nil {
-			v := BLOCK_ACCESS_TYPE
+			v := BlockAccessType
 			capAccessType = &v
 		}
 		if capAccessType != nil {
@@ -158,8 +158,8 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		size = DefaultCapacity
 	}
 	var fsName string
-	if *accessType == BLOCK_ACCESS_TYPE {
-		fsName = BLOCK_ACCESS_FS_NAME
+	if *accessType == BlockAccessType {
+		fsName = BlockAccessFsName
 	} else {
 		var present bool
 		fsName, present = req.Parameters[fsParamKey]
