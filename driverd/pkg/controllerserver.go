@@ -37,6 +37,8 @@ const (
 
 	vgParamKey = "volumeGroup"
 	fsParamKey = "filesystem"
+
+	DefaultCapacity = 1 << 20
 )
 
 var (
@@ -151,6 +153,10 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if !vgRe.MatchString(vgName) {
 		return nil, status.Error(codes.InvalidArgument, "invalid volume group parameter")
 	}
+	size := uint64(req.GetCapacityRange().GetRequiredBytes())
+	if size == 0 {
+		size = DefaultCapacity
+	}
 	var fsName string
 	if *accessType == BLOCK_ACCESS_TYPE {
 		fsName = BLOCK_ACCESS_FS_NAME
@@ -184,7 +190,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			VgName:   vgName,
 			LvName:   lvName,
 			Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
-			Size:     uint64(req.GetCapacityRange().GetRequiredBytes()),
+			Size:     size,
 			LvTags: []string{
 				encodeTag(nameTag + req.GetName()),
 				encodeTag(getOwnerTag(cs.nodeId, cs.lvmctrldAddr)),
