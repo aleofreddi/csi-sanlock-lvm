@@ -9,7 +9,7 @@ all: all@driverd all@lvmctrld all@deploy ;
 %@lvmctrld:
 	@$(MAKE) -C lvmctrld $*
 %@deploy:
-	@$(MAKE) -C deploy/kubernetes-1.17 $*
+	@$(MAKE) -C deploy/kubernetes $*
 
 build-image: build-image@driverd build-image@lvmctrld ;
 
