@@ -1,4 +1,6 @@
-.PHONY: all build test clean build-image push-image
+.PHONY: all build mock test clean build-image push-image
+
+include ../common.mk
 
 # :.!find . -type f -name \*go -a \! -name \*_test.go | sort -u | tr \\n ' '
 SRC=\
@@ -8,19 +10,23 @@ SRC=\
 TEST=\
 ./pkg/tagencoder_test.go 
 
-VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
+VPATH=../lvmctrld/proto ./pkg
+
+MOCKS=mock/fs.int.go mock/lvmctrld.pb.int.go mock/lvmctrldclient.int.go mock/mount_test.ext.go
 
 all:	build test
 
 build:  bin/driverd
 
 clean:
-	$(RM) -r ./bin
+	$(RM) -r ./bin ./mock
+
+mock: $(MOCKS)
 
 bin/driverd: $(SRC)
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION)' -o ./bin/driverd ./cmd
 
-test: $(SRC) $(TEST)
+test: mock $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
 build-image:

@@ -1,4 +1,6 @@
-.PHONY: all build test clean build-image push-image
+.PHONY: all build mock test clean build-image push-image
+
+include ../common.mk
 
 # :.!(find . -type f -name \*go -a \! -name \*_test.go; echo ./proto/lvmctrld.pb.go) | sort -u | tr \\n ' '
 SRC=\
@@ -8,22 +10,23 @@ SRC=\
 TEST=\
 ./pkg/fakecommander_test.go ./pkg/lvmctrldserver_test.go 
 
-VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
+VPATH=./pkg
+
+MOCKS=
 
 all:	build test
 
 build:  bin/lvmctrld
 
 clean:
-	$(RM) -r ./bin ./proto/*.pb.go
+	$(RM) -r ./bin ./mock ./proto/*.pb.go
 
-%.pb.go: %.proto
-	protoc --go_out=plugins=grpc:. $<
+mock: $(MOCKS)
 
 bin/lvmctrld: $(SRC)
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION)' -o ./bin/lvmctrld ./cmd
 
-test: $(SRC) $(TEST)
+test: mock $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
 build-image:

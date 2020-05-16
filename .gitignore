@@ -1,3 +1,4 @@
 lvmctrld/proto/*.go
 */bin
 **/coverage.txt
+*/mock
