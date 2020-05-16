@@ -37,13 +37,15 @@ type nodeServer struct {
 	nodeId                string
 	lvmctrldAddr          string
 	lvmctrldClientFactory LvmCtrldClientFactory
+	newFileSystem         FileSystemFactory
 }
 
-func NewNodeServer(nodeId, lvmctrldAddr string, factory LvmCtrldClientFactory) (*nodeServer, error) {
+func NewNodeServer(nodeId, lvmctrldAddr string, factory LvmCtrldClientFactory, newFileSystem FileSystemFactory) (*nodeServer, error) {
 	return &nodeServer{
 		nodeId:                nodeId,
 		lvmctrldAddr:          lvmctrldAddr,
 		lvmctrldClientFactory: factory,
+		newFileSystem:         newFileSystem,
 	}, nil
 }
 
@@ -93,7 +95,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	targetPath := req.GetTargetPath()
 
 	// Decode access type from request
-	var accessType volumeAccessType
+	var accessType VolumeAccessType
 	if req.GetVolumeCapability().GetMount() != nil {
 		accessType = MountAccessType
 	} else {
@@ -114,9 +116,13 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	// Extract the filesystem
-	fs, err := getFileSystem(lv)
+	fsName, err := getFileSystemName(lv)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	fs, err := ns.newFileSystem(fsName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if !fs.Accepts(accessType) {
 		return nil, status.Error(codes.InvalidArgument, "incompatible access type for this volume")
@@ -265,7 +271,11 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	}
 
 	// Extract the filesystem
-	fs, err := getFileSystem(lv)
+	fsName, err := getFileSystemName(lv)
+	if err != nil {
+		return nil, err
+	}
+	fs, err := ns.newFileSystem(fsName)
 	if err != nil {
 		return nil, err
 	}
@@ -292,16 +302,19 @@ func findLogicalVolume(ctx context.Context, client *LvmCtrldClientConnection, vo
 	return lvs.Lvs[0], nil
 }
 
-func getFileSystem(lv *proto.LogicalVolume) (FileSystem, error) {
+func getFileSystemName(lv *proto.LogicalVolume) (string, error) {
 	fsName := ""
 	for _, encodedTag := range lv.LvTags {
 		decodedTag, _ := decodeTag(encodedTag)
 		if strings.HasPrefix(decodedTag, fsTag) {
 			if len(fsName) > 0 {
-				return nil, status.Errorf(codes.Internal, "volume %s/%s has multiple filesystem tags", lv.VgName, lv.LvName)
+				return "", fmt.Errorf("volume %s/%s has multiple filesystem tags", lv.VgName, lv.LvName)
 			}
 			fsName = decodedTag[len(fsTag):]
 		}
 	}
-	return NewFileSystem(fsName)
+	if fsName == "" {
+		return "", fmt.Errorf("volume %s/%s is missing filesystem tags", lv.VgName, lv.LvName)
+	}
+	return fsName, nil
 }

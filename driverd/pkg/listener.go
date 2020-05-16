@@ -55,7 +55,7 @@ func NewListener(name, version, nodeId, lsAddr, lvmAddr string) (*listener, erro
 		return nil, fmt.Errorf("missing lvmctrld address")
 	}
 
-	cf, err := NewLvmCtrldClientFactory(lvmAddr, 30 * time.Second)
+	cf, err := NewLvmCtrldClientFactory(lvmAddr, 30*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance lvmctrld client factory: %s", err.Error())
 	}
@@ -63,7 +63,7 @@ func NewListener(name, version, nodeId, lsAddr, lvmAddr string) (*listener, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %s", err.Error())
 	}
-	ns, err := NewNodeServer(nodeId, lvmAddr, cf)
+	ns, err := NewNodeServer(nodeId, lvmAddr, cf, NewFileSystem)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %s", err.Error())
 	}

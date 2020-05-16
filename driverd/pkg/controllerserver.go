@@ -46,10 +46,10 @@ var (
 	vgRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
 )
 
-type volumeAccessType int
+type VolumeAccessType int
 
 const (
-	MountAccessType volumeAccessType = iota
+	MountAccessType VolumeAccessType = iota
 	BlockAccessType
 
 	BlockAccessFsName = "raw"
@@ -104,7 +104,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	// Parse capabilities
 	var accessMode *csi.VolumeCapability_AccessMode_Mode
-	var accessType *volumeAccessType
+	var accessType *VolumeAccessType
 	for _, cap := range req.GetVolumeCapabilities() {
 		var capAccessMode *csi.VolumeCapability_AccessMode_Mode
 		if cap.GetAccessMode() != nil {
@@ -119,7 +119,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			}
 		}
 
-		var capAccessType *volumeAccessType
+		var capAccessType *VolumeAccessType
 		if cap.GetMount() != nil {
 			v := MountAccessType
 			capAccessType = &v

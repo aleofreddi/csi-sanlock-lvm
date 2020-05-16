@@ -114,6 +114,9 @@ func (f *concreteLvmCtrldClientFactory) NewRemote(address string) (*LvmCtrldClie
 }
 
 func (c *LvmCtrldClientConnection) Close() error {
+	if c.conn == nil {
+		return nil
+	}
 	return c.conn.Close()
 }
 
@@ -125,11 +128,11 @@ func connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 		//grpc.WithUnaryInterceptor(LvmctrldLog),
 	}
 	dialOptions = append(dialOptions, grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
-		proto, target, err := parseAddress(addr)
+		protocol, target, err := parseAddress(addr)
 		if err != nil {
 			return nil, err
 		}
-		return net.DialTimeout(proto, target, timeout)
+		return net.DialTimeout(protocol, target, timeout)
 	}))
 	conn, err := grpc.Dial(address, dialOptions...)
 	if err != nil {

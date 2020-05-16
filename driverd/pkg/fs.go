@@ -24,25 +24,33 @@ import (
 	"os/exec"
 )
 
+type FileSystemFactoryInterface interface {
+	New(fs string) (FileSystem, error)
+}
+
+type FileSystemFactory func(fs string) (FileSystem, error)
+
 type FileSystem interface {
-	Accepts(accessType volumeAccessType) bool
+	Accepts(accessType VolumeAccessType) bool
 	Make(device string) error
 	Grow(device string) error
 	Mount(source, mountPoint string, flags []string) error
 }
 
 type rawFileSystem struct {
+	mounter mount.Interface
 }
 
 type ext4FileSystem struct {
+	mounter mount.Interface
 }
 
 func NewFileSystem(fs string) (FileSystem, error) {
 	switch fs {
 	case BlockAccessFsName:
-		return &rawFileSystem{}, nil
+		return &rawFileSystem{mount.New("")}, nil
 	case "ext4":
-		return &ext4FileSystem{}, nil
+		return &ext4FileSystem{mount.New("")}, nil
 	}
 	return nil, fmt.Errorf("invalid filesystem %q", fs)
 }
@@ -55,19 +63,17 @@ func (fs *rawFileSystem) Grow(device string) error {
 	return nil
 }
 
-func (fs *rawFileSystem) Accepts(accessType volumeAccessType) bool {
+func (fs *rawFileSystem) Accepts(accessType VolumeAccessType) bool {
 	return accessType == BlockAccessType
 }
 
 func (fs *rawFileSystem) Mount(source, mountPoint string, flags []string) error {
-	mounter := mount.New("")
-	mounted, err := mounter.IsLikelyNotMountPoint(mountPoint)
-
+	mounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
 	if err != nil {
 		if os.IsExist(err) {
 			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %s", mountPoint, err.Error())
 		}
-		if err = mounter.MakeFile(mountPoint); err != nil {
+		if err = fs.mounter.MakeFile(mountPoint); err != nil {
 			return status.Errorf(codes.Internal, "failed to create file %s: %s", mountPoint, err.Error())
 		}
 		mounted = true
@@ -110,13 +116,12 @@ func (fs *ext4FileSystem) Grow(device string) error {
 	return nil
 }
 
-func (fs *ext4FileSystem) Accepts(accessType volumeAccessType) bool {
+func (fs *ext4FileSystem) Accepts(accessType VolumeAccessType) bool {
 	return accessType == MountAccessType
 }
 
 func (fs *ext4FileSystem) Mount(source, mountPoint string, flags []string) error {
-	mounter := mount.New("")
-	mounted, err := mounter.IsLikelyNotMountPoint(mountPoint)
+	mounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
 	if err != nil {
 		if os.IsExist(err) {
 			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %s", mountPoint, err.Error())
@@ -128,7 +133,7 @@ func (fs *ext4FileSystem) Mount(source, mountPoint string, flags []string) error
 	}
 
 	if mounted {
-		err = mounter.Mount(source, mountPoint, "ext4", flags)
+		err = fs.mounter.Mount(source, mountPoint, "ext4", flags)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
