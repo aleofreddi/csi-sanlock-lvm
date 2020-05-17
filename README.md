@@ -45,7 +45,7 @@ Before deploying the driver you should initialize a shared volume group.
 ### Initialize a shared volume group
 
 You can either initialize it externally (like using lvm from a node) or use the
-provided `deploy/kubernetes/csi-sanlock-lvm-init.yaml` job template to get
+provided `deploy/kubernetes-1.18/csi-sanlock-lvm-init.yaml` job template to get
 Kubernetes initialize your disks.
 
 To use the `csi-sanlock-lvm-init` job, do the following:
