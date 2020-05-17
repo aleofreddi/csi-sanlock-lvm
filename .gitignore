@@ -1,4 +1,4 @@
-lvmctrld/proto/*.go
-*/bin
 **/coverage.txt
-*/mock
+**/mock/*.go
+**/proto/*.go
+*/bin

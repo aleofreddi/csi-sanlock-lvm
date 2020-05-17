@@ -1,13 +1,11 @@
 VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
 
-%.pb.go: %.proto
-	protoc --go_out=plugins=grpc:. $<
+proto/%.pb.go: %.proto
+	protoc --go_out=plugins=grpc:. --go_opt=paths=source_relative $<
+#	protoc --go_out=plugins=grpc:. --go_out=proto --go_opt=paths=source_relative $<
 
-mock/%.int.go: %.go
+mock/%.mi.go: %.go
 	mockgen -package mock -destination $@ -source $<
 
-mock/%.ext.go: %.mock
+mock/%.me.go: %.mock
 	mockgen -package mock -destination $@ `cat $<`
-
-%.pb.go: %.proto
-	protoc --go_out=plugins=grpc:. --go_out=proto --go_opt=paths=source_relative $<
