@@ -27,6 +27,7 @@ before_install:
   - curl -L https://github.com/google/protobuf/releases/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.zip -o /tmp/protoc.zip
   - unzip /tmp/protoc.zip -d "$HOME"/protoc
   - go get -v github.com/golang/protobuf/protoc-gen-go
+  - go get -v github.com/golang/mock/mockgen
 
 script:
   - make -j2 all
