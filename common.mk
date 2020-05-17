@@ -1,3 +1,5 @@
+.PHONY: godep
+
 VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
 
 proto/%.pb.go: %.proto
@@ -9,3 +11,6 @@ mock/%.mi.go: %.go
 
 mock/%.me.go: %.mock
 	mockgen -package mock -destination $@ `cat $<`
+
+godep:
+	go get ./...
