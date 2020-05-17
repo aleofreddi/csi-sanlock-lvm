@@ -16,7 +16,7 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-package proto;
+option go_package = "github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto";
 
 enum LvActivationMode {
     NONE = 0;
