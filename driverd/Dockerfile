@@ -14,7 +14,8 @@
 
 FROM golang:1.13 AS builder
 
-RUN apt-get update && apt-get install -y protobuf-compiler golang-goprotobuf-dev
+RUN apt-get update \
+    && apt-get install -y protobuf-compiler golang-goprotobuf-dev gettext-base
 
 ARG VERSION
 ADD . /src

@@ -44,7 +44,7 @@ spec:
 
       containers:
         - name: driverd
-          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.1
+          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.2
           imagePullPolicy: Always # FIXME for development
           args:
             - "--name=csi-sanlock-lvm.csi.vleo.net"
@@ -88,12 +88,12 @@ spec:
               port: healthz
             timeoutSeconds: 3
             periodSeconds: 2
-          #startupProbe: # FIXME: Why this doesn't work on stock 1.17?
-          #  httpGet:
-          #    path: /healthz
-          #    port: healthz
-          #  failureThreshold: 30
-          #  periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            failureThreshold: 30
+            periodSeconds: 10
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -109,7 +109,7 @@ spec:
               name: modules-dir
 
         - name: lvmctrld
-          image: quay.io/aleofreddi/lvmctrld:v0.1
+          image: quay.io/aleofreddi/lvmctrld:v0.2
           imagePullPolicy: Always # FIXME for development
           args:
             - "--listen=tcp://0.0.0.0:9000"

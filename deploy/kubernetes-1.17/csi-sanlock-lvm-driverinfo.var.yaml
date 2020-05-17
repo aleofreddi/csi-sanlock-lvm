@@ -12,22 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.13 AS builder
-
-RUN apt-get update \
-    && apt-get install -y protobuf-compiler golang-goprotobuf-dev gettext-base
-
-ARG VERSION
-ADD . /src
-RUN make -C /src clean build
-
-FROM ubuntu:18.04
-
-RUN apt-get update \
-	&& apt-get install -y file util-linux e2fsprogs lvm2 sanlock lvm2-lockd \
-	&& apt-get clean
-
-COPY ./lvmctrld/conf/lvm.conf etc/lvm/lvm.conf
-COPY --from=builder /src/lvmctrld/bin/lvmctrld /lvmctrld
-
-ENTRYPOINT ["/lvmctrld"]
+apiVersion: storage.k8s.io/v1beta1
+kind: CSIDriver
+metadata:
+  name: csi-sanlock-lvm.csi.vleo.net
+spec:
+  # Supports persistent and ephemeral inline volumes.
+  volumeLifecycleModes:
+    - Persistent
+    - Ephemeral
+  # To determine at runtime which mode a volume uses, pod info and its
+  # "csi.storage.k8s.io/ephemeral" entry are needed.
+  podInfoOnMount: true

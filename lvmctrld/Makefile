@@ -1,10 +1,10 @@
-.PHONY: all build proto mock test clean build-image push-image
+.PHONY: all proto build mock test clean build-image push-image
 
 include ../common.mk
 
-# :.!find . -type f -name \*go -a \! -name \*_test.go | sort -u | tr \\n ' '
+# :.!find pkg cmd -type f -name \*go -a \! -name \*_test.go | sort -u | tr \\n ' '
 SRC=\
-./cmd/main.go ./pkg/grpclogger.go ./pkg/listener.go ./pkg/lock.go ./pkg/lvmctrldserver.go ./proto/lvmctrld.pb.go
+cmd/main.go pkg/commander.go pkg/grpclogger.go pkg/listener.go pkg/lock.go pkg/lvmctrldserver.go 
 
 # :.!find . -type f -name \*_test.go | sort -u | tr \\n ' '
 TEST=\
@@ -16,21 +16,21 @@ MOCKS=
 
 VPATH=./pkg ./proto
 
-all:	build test
+all: build test
 
-build:  bin/lvmctrld
+build: bin/lvmctrld
 
 clean:
 	$(RM) -r ./bin ./mock/*.go ./proto/*.go
 
-mock:	$(MOCKS)
+mock: go.dep $(MOCKS)
 
-proto:	$(PROTO)
+proto: go.dep $(PROTO)
 
-bin/lvmctrld:	proto $(SRC)
+bin/lvmctrld: go.dep $(SRC) $(PROTO)
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION)' -o ./bin/lvmctrld ./cmd
 
-test: mock proto $(SRC) $(TEST)
+test: go.dep mock proto $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
 build-image:

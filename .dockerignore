@@ -1,2 +1,3 @@
 */bin
 */proto/*.go
+*/mock/*.go
