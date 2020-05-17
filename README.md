@@ -15,7 +15,7 @@ This project is in alpha state, YMMV.
 ## Features
 
 -   Dynamic volume provisioning
-    -   ~~Support both filesystem and block devices~~ (TODO)
+    -   Support both filesystem and block devices
     -   ~~Support different filesystems~~ (TODO)
     -   ~~Support different RAID levels~~ (TODO)
     -   Support single node read/write access
@@ -44,9 +44,9 @@ Before deploying the driver you should initialize a shared volume group.
 
 ### Initialize a shared volume group
 
-You can either initialize it externally (like using lvm from a node) or use
-the provided `deploy/kubernetes-1.17/csi-sanlock-lvm-init.yaml` job template
-to get Kubernetes initialize your disks.
+You can either initialize it externally (like using lvm from a node) or use the
+provided `deploy/kubernetes/csi-sanlock-lvm-init.yaml` job template to get
+Kubernetes initialize your disks.
 
 To use the `csi-sanlock-lvm-init` job, do the following:
 
@@ -64,10 +64,11 @@ accommodate the driver:
 $ kubectl create namespace csi-sanlock-lvm-system
 ```
 
-And then deploy using `kustomization`:
+And then deploy using `kustomization` (adjust the kubernetes version in the
+link as needed):
 
 ```shell
-$ kubectl apply -k 'https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-1.17?ref=v0.1'
+$ kubectl apply -k 'https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-1.18?ref=v0.2'
 ```
 
 On a successful installation, all csi pods should be running (with the exception
