@@ -17,17 +17,17 @@ VPATH=./pkg ../lvmctrld/proto ./mock
 
 all:	build test
 
-build:  bin/driverd
+build:  godep bin/driverd
 
 clean:
 	$(RM) -r ./bin ./mock/*.go
 
-mock:	$(MOCKS)
+mock:	godep $(MOCKS)
 
 bin/driverd:	$(SRC)
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION)' -o ./bin/driverd ./cmd
 
-test:	mock $(SRC) $(TEST)
+test:	godep mock $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
 build-image:
