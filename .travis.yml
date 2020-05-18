@@ -30,7 +30,7 @@ before_install:
   - go get -v github.com/golang/mock/mockgen
 
 script:
-  - make -j2 all
+  - make all
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
