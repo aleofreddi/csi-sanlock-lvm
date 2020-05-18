@@ -22,7 +22,7 @@ all: build test
 build: bin/driverd
 
 clean:
-	$(RM) -r go.dep ./bin ./mock/*.go
+	$(RM) -r go.dep coverage.txt ./bin ./mock/*.m[ie].go
 
 go.dep: go.mod $(PROTO)
 	go get -t ./... && touch go.dep

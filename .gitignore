@@ -1,5 +1,5 @@
 **/coverage.txt
-**/mock/*.go
+**/mock/*.m?.go
 **/proto/*.go
 */bin
 go.dep

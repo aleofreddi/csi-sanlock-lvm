@@ -21,7 +21,7 @@ all: build test
 build: bin/lvmctrld
 
 clean:
-	$(RM) -r go.dep ./bin ./mock/*.go ./proto/*.go
+	$(RM) -r go.dep coverage.txt ./bin ./mock/*.m[ie].go ./proto/*.go
 
 go.dep: go.mod $(PROTO)
 	go get -t ./... && touch go.dep

@@ -6,9 +6,4 @@ include common.mk
 	$(MAKE) $(MFLAGS) -C lvmctrld proto $*
 	$(MAKE) $(MFLAGS) -C driverd $*
 	$(MAKE) $(MFLAGS) -C deploy $*
-
-test:
-	$(MAKE) $(MFLAGS) -C lvmctrld $*
-	$(MAKE) $(MFLAGS) -C driverd $*
-	$(MAKE) $(MFLAGS) -C deploy $*
-	cat driverd/coverage.txt lvmctrld/coverage.txt > coverage.txt
+	[ -r driverd/coverage.txt -a -r lvmctrld/coverage.txt ] && cat driverd/coverage.txt lvmctrld/coverage.txt > coverage.txt || $(RM) -f coverage.txt
