@@ -12,7 +12,7 @@ TEST=\
 
 PROTO=./proto/lvmctrld.pb.go
 
-MOCKS=
+MOCK=
 
 VPATH=./pkg ./proto
 
@@ -21,16 +21,19 @@ all: build test
 build: bin/lvmctrld
 
 clean:
-	$(RM) -r ./bin ./mock/*.go ./proto/*.go
+	$(RM) -r go.dep ./bin ./mock/*.go ./proto/*.go
 
-mock: go.dep $(MOCKS)
+go.dep: go.mod $(PROTO)
+	go get -t ./... && touch go.dep
 
-proto: go.dep $(PROTO)
+mock: go.dep $(MOCK)
+
+proto: $(PROTO)
 
 bin/lvmctrld: go.dep $(SRC) $(PROTO)
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION)' -o ./bin/lvmctrld ./cmd
 
-test: go.dep mock proto $(SRC) $(TEST)
+test: go.dep $(MOCK) $(PROTO) $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
 build-image:

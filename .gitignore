@@ -2,3 +2,4 @@
 **/mock/*.go
 **/proto/*.go
 */bin
+go.dep

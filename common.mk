@@ -3,13 +3,13 @@
 
 VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
 
-%.pb.go: %.proto
+proto/%.pb.go: %.proto
 	protoc --go_out=plugins=grpc:. --go_opt=paths=source_relative $<
 
-*/%.mi.go: %.go
+mock/%.mi.go: %.go go.dep
 	mockgen -package mock -destination $@ -source $<
 
-%.me.go: %.mock
+mock/%.me.go: %.mock go.dep
 	mockgen -package mock -destination $@ `cat $<`
 
 %.url.yaml: %.url
@@ -17,6 +17,3 @@ VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-par
 
 %.var.yaml: %.var
 	VERSION='$(VERSION)' envsubst < $< > $@
-
-go.dep: go.mod
-	go get ./... && touch go.dep

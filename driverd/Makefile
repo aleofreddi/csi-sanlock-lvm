@@ -10,26 +10,31 @@ cmd/main.go pkg/controllerserver.go pkg/fs.go pkg/identityserver.go pkg/init.go 
 TEST=\
 ./pkg/tagencoder_test.go 
 
-MOCKS=\
+PROTO=
+
+MOCK=\
 mock/fs.mi.go mock/lvmctrld.pb.mi.go mock/lvmctrldclient.mi.go mock/mount.me.go
 
-VPATH=./pkg ../lvmctrld/proto 
+VPATH=./pkg ./mock ../lvmctrld/proto
 
 all: build test
 
 build: bin/driverd
 
 clean:
-	$(RM) -r ./bin ./mock/*.go
+	$(RM) -r go.dep ./bin ./mock/*.go
 
-mock: go.dep $(MOCKS)
+go.dep: go.mod $(PROTO)
+	go get -t ./... && touch go.dep
 
-proto: go.dep $(PROTO)
+mock: go.dep $(MOCK)
+
+proto: $(PROTO)
 
 bin/driverd: go.dep $(SRC) $(PROTO)
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION)' -o ./bin/driverd ./cmd
 
-test: go.dep mock $(SRC) $(TEST)
+test: go.dep $(MOCK) $(PROTO) $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
 build-image:
