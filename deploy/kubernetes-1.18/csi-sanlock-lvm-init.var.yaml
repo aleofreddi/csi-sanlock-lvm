@@ -38,7 +38,7 @@ spec:
 
       containers:
         - name: init
-          image: quay.io/aleofreddi/lvmctrld:v0.1 # @@version@@
+          image: quay.io/aleofreddi/lvmctrld:v0.2
           command: ["sh", "-c", "sanlock daemon; lvmlockd --host-id 2000; pvcreate --config 'global{use_lvmlockd=0}' -f /dev/sdX; vgcreate --shared vg01 /dev/sdX"]
           volumeMounts:
             - mountPath: /dev
