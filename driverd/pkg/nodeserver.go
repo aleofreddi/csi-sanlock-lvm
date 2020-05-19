@@ -16,14 +16,15 @@ package driverd
 
 import (
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/kubernetes/pkg/util/mount"
-	"os"
-	"strings"
 )
 
 const topologyKeyNode = "csi-sanlock-lvm/topology"
@@ -128,9 +129,9 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "incompatible access type for this volume")
 	}
 
-	var mountFlags []string
+	mountFlags := make([]string, 0)
 	if accessType == MountAccessType {
-		mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
+		mountFlags = append(mountFlags, req.GetVolumeCapability().GetMount().GetMountFlags()...)
 		if req.GetReadonly() {
 			mountFlags = append(mountFlags, "ro")
 		} else {
