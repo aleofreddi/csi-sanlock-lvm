@@ -17,10 +17,11 @@ package driverd
 import (
 	"context"
 	"fmt"
-	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
-	"k8s.io/klog"
 	"strings"
 	"time"
+
+	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
+	"k8s.io/klog"
 )
 
 func (d *listener) Init() error {

@@ -16,6 +16,9 @@ package driverd_test
 
 import (
 	"errors"
+	"reflect"
+	"testing"
+
 	mock "github.com/aleofreddi/csi-sanlock-lvm/driverd/mock"
 	pkg "github.com/aleofreddi/csi-sanlock-lvm/driverd/pkg"
 	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
@@ -25,9 +28,334 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/testing/protocmp"
-	"reflect"
-	"testing"
 )
+
+func Test_nodeServer_NodeStageVolume(t *testing.T) {
+	type fields struct {
+		nodeId                string
+		lvmctrldAddr          string
+		lvmctrldClientFactory pkg.LvmCtrldClientFactory
+		newFileSystem         pkg.FileSystemFactory
+	}
+	type args struct {
+		ctx context.Context
+		req *csi.NodeStageVolumeRequest
+	}
+	tests := []struct {
+		name        string
+		fields      func(controller *gomock.Controller) *fields
+		args        args
+		want        *csi.NodeStageVolumeResponse
+		wantErr     bool
+		wantErrCode codes.Code
+	}{
+		{
+			"Should fail when VolumeId is missing",
+			func(controller *gomock.Controller) *fields {
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeStageVolumeRequest{
+					VolumeCapability:  &csi.VolumeCapability{},
+					StagingTargetPath: "/staging/path",
+				},
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when VolumeCapability is missing",
+			func(controller *gomock.Controller) *fields {
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeStageVolumeRequest{
+					VolumeId:          "vg00/volume1",
+					StagingTargetPath: "/staging/path",
+				},
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when StagingTargetPath is missing",
+			func(controller *gomock.Controller) *fields {
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeStageVolumeRequest{
+					VolumeId:         "vg00/volume1",
+					VolumeCapability: &csi.VolumeCapability{},
+				},
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when volume activation fails",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							LvChange(gomock.Any(),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: "vg00/volume1", Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								nil,
+								status.Error(codes.Internal, "internal error"),
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeStageVolumeRequest{
+					VolumeId:          "vg00/volume1",
+					StagingTargetPath: "/staging/path",
+					VolumeCapability:  &csi.VolumeCapability{},
+				},
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should fail when lvs fails",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							LvChange(gomock.Any(),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: "vg00/volume1", Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvChangeResponse{},
+								nil,
+							),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								nil,
+								status.Error(codes.Internal, "internal error"),
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeStageVolumeRequest{
+					VolumeId:          "vg00/volume1",
+					StagingTargetPath: "/staging/path",
+					VolumeCapability:  &csi.VolumeCapability{},
+				},
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should fail when update tag fails",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							LvChange(gomock.Any(),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: "vg00/volume1", Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvChangeResponse{},
+								nil,
+							),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{
+									"ignore_invalid_tags_&",
+									"csi&2dsanlock&2dlvm.vleo.net&2fowner=node1&40addr",
+									"csi&2dsanlock&2dlvm.vleo.net&2fowner=node&40addr",
+									"csi&2dsanlock&2dlvm.vleo.net&2fowner=node2&40addr",
+								}}}},
+								nil,
+							),
+					client.EXPECT().
+							LvChange(gomock.Any(),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: "vg00/volume1",
+									AddTag: []string{"csi&2dsanlock&2dlvm.vleo.net&2fowner=node&40addr"},
+									DelTag: []string{"csi&2dsanlock&2dlvm.vleo.net&2fowner=node1&40addr", "csi&2dsanlock&2dlvm.vleo.net&2fowner=node2&40addr"},
+								}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								nil,
+								status.Error(codes.Internal, "internal error"),
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeStageVolumeRequest{
+					VolumeId:          "vg00/volume1",
+					StagingTargetPath: "/staging/path",
+					VolumeCapability:  &csi.VolumeCapability{},
+				},
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should activate the volume and set owner tag",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							LvChange(gomock.Any(),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: "vg00/volume1", Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvChangeResponse{},
+								nil,
+							),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{
+									"ignore_invalid_tags_&",
+									"csi&2dsanlock&2dlvm.vleo.net&2fowner=node1&40addr",
+									"csi&2dsanlock&2dlvm.vleo.net&2fowner=node&40addr",
+									"csi&2dsanlock&2dlvm.vleo.net&2fowner=node2&40addr",
+								}}}},
+								nil,
+							),
+					client.EXPECT().
+							LvChange(gomock.Any(),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: "vg00/volume1",
+									AddTag: []string{"csi&2dsanlock&2dlvm.vleo.net&2fowner=node&40addr"},
+									DelTag: []string{"csi&2dsanlock&2dlvm.vleo.net&2fowner=node1&40addr", "csi&2dsanlock&2dlvm.vleo.net&2fowner=node2&40addr"},
+								}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvChangeResponse{},
+								nil,
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeStageVolumeRequest{
+					VolumeId:          "vg00/volume1",
+					StagingTargetPath: "/staging/path",
+					VolumeCapability:  &csi.VolumeCapability{},
+				},
+			},
+			&csi.NodeStageVolumeResponse{},
+			false,
+			codes.OK,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+			fields := tt.fields(mockCtrl)
+			ns, _ := pkg.NewNodeServer(fields.nodeId, fields.lvmctrldAddr, fields.lvmctrldClientFactory, fields.newFileSystem)
+			got, err := ns.NodeStageVolume(tt.args.ctx, tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NodeStageVolume() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if (err != nil) && status.Code(err) != tt.wantErrCode {
+				t.Errorf("NodeStageVolume() error code = %v, wantErrCode %v", status.Code(err), tt.wantErrCode)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NodeStageVolume() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func Test_nodeServer_NodePublishVolume(t *testing.T) {
 	type fields struct {

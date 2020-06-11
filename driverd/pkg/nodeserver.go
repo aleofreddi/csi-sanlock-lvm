@@ -187,15 +187,6 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 	defer client.Close()
 
-	// Add owner tag
-	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
-		Target: volumeId,
-		AddTag: []string{encodeTag(getOwnerTag(ns.nodeId, ns.lvmctrldAddr))},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to add tag: %s", err.Error())
-	}
-
 	// Activate volume
 	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   volumeId,
@@ -203,6 +194,35 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to activate logical volume: %s", err.Error())
+	}
+
+	// Retrieve logical volume
+	lv, err := findLogicalVolume(ctx, client, volumeId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list logical volume: %s", err.Error())
+	}
+
+	// Collect any stale owner tag
+	expectedOwnerTag := encodeTag(getOwnerTag(ns.nodeId, ns.lvmctrldAddr))
+	var delTags []string
+	for _, encodedTag := range lv.LvTags {
+		if encodedTag == expectedOwnerTag {
+			continue
+		}
+		decodedTag, _ := decodeTag(encodedTag)
+		if strings.HasPrefix(decodedTag, ownerTag) {
+			delTags = append(delTags, encodedTag)
+		}
+	}
+
+	// Add owner tag and remove stale owner tags if any
+	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
+		Target: volumeId,
+		AddTag: []string{expectedOwnerTag},
+		DelTag: delTags,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to update tags: %s", err.Error())
 	}
 
 	return &csi.NodeStageVolumeResponse{}, nil
