@@ -100,7 +100,7 @@ func (fs *ext4FileSystem) Make(device string) error {
 	mkfs.Stdout = stdout
 	mkfs.Stderr = stderr
 	if mkfs.Run() != nil {
-		return status.Errorf(codes.Internal, "failed to format volume %s: %s %s]", device, stdout.String(), stderr.String())
+		return status.Errorf(codes.Internal, "failed to format volume %s: %s %s", device, stdout.String(), stderr.String())
 	}
 	return nil
 }
@@ -111,7 +111,7 @@ func (fs *ext4FileSystem) Grow(device string) error {
 	resize2fs.Stdout = stdout
 	resize2fs.Stderr = stderr
 	if resize2fs.Run() != nil {
-		return status.Errorf(codes.Internal, "failed to resize volume")
+		return status.Errorf(codes.Internal, "failed to resize volume %s: %s %s", device, stdout.String(), stderr.String())
 	}
 	return nil
 }
