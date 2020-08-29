@@ -16,13 +16,14 @@ package lvmctrld
 
 import (
 	"context"
+	"reflect"
+	"testing"
+
 	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/kylelemons/godebug/pretty"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"reflect"
-	"testing"
 )
 
 func Test_lvmctrldServer_LvChange(t *testing.T) {
@@ -577,7 +578,7 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			fields{
 				&FakeCommander{
 					t: t,
-					executions: []FakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json"}, 0,
+					executions: []FakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "-O", "field1,-field2", "vg01"}, 0,
 						`
   {
       "report": [
@@ -594,7 +595,11 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			},
 			args{
 				nil,
-				&proto.LvsRequest{},
+				&proto.LvsRequest{
+					Target: "vg01",
+					Select: "field=value",
+					Sort:   []string{"field1", "-field2"},
+				},
 			},
 			&proto.LvsResponse{
 				Lvs: []*proto.LogicalVolume{

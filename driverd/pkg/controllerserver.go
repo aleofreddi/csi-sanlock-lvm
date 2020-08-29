@@ -18,14 +18,16 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/pkg/math"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog"
-	"regexp"
-	"strings"
 )
 
 const (
@@ -309,8 +311,11 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// Check arguments
 	volumeId := req.GetVolumeId()
+	if volumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	}
 	if !volumeIdRe.MatchString(volumeId) {
-		return nil, status.Error(codes.InvalidArgument, "invalid volume id")
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", req.GetVolumeId()))
 	}
 	if len(req.VolumeCapabilities) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "missing volume capabilities")
@@ -328,7 +333,7 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		Target: volumeId,
 	})
 	if err != nil {
-		return nil, status.Error(codes.NotFound, req.GetVolumeId())
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", req.GetVolumeId()))
 	}
 
 	//for _, cap := range req.GetVolumeCapabilities() {
@@ -407,7 +412,7 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Errorf(codes.Internal, "failed to list volumes")
 	}
 	if err != nil && status.Code(err) == codes.NotFound || len(lvs.Lvs) != 1 {
-		return nil, status.Error(codes.NotFound, "logical volume not found")
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", volumeId))
 	}
 
 	lv := lvs.Lvs[0]
@@ -438,20 +443,49 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	}
 	defer client.Close()
 
+	// List volumes
 	volumes, err := client.Lvs(ctx, &proto.LvsRequest{
 		Select: "lv_role!=snapshot",
+		Sort:   []string{"vg_name", "lv_name"},
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list volumes")
 	}
+	lvs := volumes.Lvs
 
-	entries := make([]*csi.ListVolumesResponse_Entry, len(volumes.Lvs))
-	for i, lv := range volumes.Lvs {
-		entries[i] = &csi.ListVolumesResponse_Entry{Volume: lvToVolume(lv)}
+	// Paginate
+	i, s := 0, len(lvs)
+	if req.StartingToken != "" {
+		for startVg, startLv := volumeIdToVgLv(req.StartingToken); i < len(lvs); i++ {
+			if lvs[i].VgName == startVg && lvs[i].LvName == startLv {
+				break
+			}
+		}
+		if i == s {
+			return nil, status.Errorf(codes.Aborted, "invalid starting token")
+		}
+	}
+	if req.MaxEntries > 0 {
+		s = math.Min(s, i + int(req.MaxEntries))
+	}
+
+	// Map entries
+	entries := make([]*csi.ListVolumesResponse_Entry, s - i)
+	for j := 0; i < s; {
+		entries[j] = &csi.ListVolumesResponse_Entry{Volume: lvToVolume(lvs[i])}
+		j++
+		i++
+	}
+
+	// Set next page token if any
+	next := ""
+	if s < len(lvs) {
+		next = fmt.Sprintf("%s/%s", lvs[s].VgName, lvs[s].LvName)
 	}
 
 	return &csi.ListVolumesResponse{
 		Entries: entries,
+		NextToken: next,
 	}, nil
 }
 
@@ -571,9 +605,6 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 		filters = append(filters, "vg_name="+vgName, "origin="+lvName)
 	}
 
-	// FIXME - pagination is a hard requirement as per spec!
-	// see https://github.com/container-storage-interface/spec/blob/master/spec.md#listsnapshots
-
 	// Connect to lvmctrld
 	client, err := cs.lvmctrldClientFactory.NewLocal()
 	if err != nil {
@@ -584,14 +615,46 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 	// List snapshots
 	volumes, err := client.Lvs(ctx, &proto.LvsRequest{
 		Select: strings.Join(filters, " && "),
+		Sort: []string{"vg_name", "lv_name"},
 	})
-	entries := make([]*csi.ListSnapshotsResponse_Entry, len(volumes.Lvs))
-	for i, lv := range volumes.Lvs {
-		entries[i] = &csi.ListSnapshotsResponse_Entry{Snapshot: lvToSnapshot(lv)}
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list snapshots")
+	}
+	lvs := volumes.Lvs
+
+	// Paginate
+	i, s := 0, len(lvs)
+	if req.StartingToken != "" {
+		for startVg, startLv := volumeIdToVgLv(req.StartingToken); i < len(lvs); i++ {
+			if lvs[i].VgName == startVg && lvs[i].LvName == startLv {
+				break
+			}
+		}
+		if i == s {
+			return nil, status.Errorf(codes.Aborted, "invalid starting token")
+		}
+	}
+	if req.MaxEntries > 0 {
+		s = math.Min(s, i + int(req.MaxEntries))
+	}
+
+	// Map entries
+	entries := make([]*csi.ListSnapshotsResponse_Entry, s - i)
+	for j := 0; i < s; {
+		entries[j] = &csi.ListSnapshotsResponse_Entry{Snapshot: lvToSnapshot(lvs[i])}
+		j++
+		i++
+	}
+
+	// Set next page token if any
+	next := ""
+	if s < len(lvs) {
+		next = fmt.Sprintf("%s/%s", lvs[s].VgName, lvs[s].LvName)
 	}
 
 	return &csi.ListSnapshotsResponse{
 		Entries: entries,
+		NextToken: next,
 	}, nil
 }
 

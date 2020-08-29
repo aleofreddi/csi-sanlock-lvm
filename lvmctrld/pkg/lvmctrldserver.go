@@ -185,6 +185,9 @@ func (s lvmctrldServer) Lvs(_ context.Context, req *proto.LvsRequest) (*proto.Lv
 	if req.Select != "" {
 		args = append(args, "-S", req.Select)
 	}
+	if len(req.Sort) > 0 {
+		args = append(args, "-O", strings.Join(req.Sort, ","))
+	}
 	if req.Target != "" {
 		args = append(args, req.Target)
 	}
