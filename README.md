@@ -68,7 +68,7 @@ And then deploy using `kustomization` (adjust the kubernetes version in the
 link as needed):
 
 ```shell
-$ kubectl apply -k 'https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-1.18?ref=v0.2'
+$ kubectl apply -k 'https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-1.18?ref=v0.3'
 ```
 
 On a successful installation, all csi pods should be running (with the exception

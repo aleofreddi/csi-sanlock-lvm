@@ -25,6 +25,7 @@ spec:
       labels:
         app: csi-sanlock-lvm-plugin
     spec:
+      priorityClassName: system-cluster-critical
       initContainers:
         - name: modprobe
           image: busybox:1.31.1
@@ -45,7 +46,7 @@ spec:
       containers:
         - name: driverd
           image: quay.io/aleofreddi/csi-lvm-sanlock:$VERSION
-          imagePullPolicy: Always # FIXME for development
+          imagePullPolicy: $IMAGE_PULL_POLICY
           args:
             - "--name=csi-sanlock-lvm.csi.vleo.net"
             - "--listen=$(CSI_ENDPOINT)"
@@ -110,7 +111,7 @@ spec:
 
         - name: lvmctrld
           image: quay.io/aleofreddi/lvmctrld:$VERSION
-          imagePullPolicy: Always # FIXME for development
+          imagePullPolicy: $IMAGE_PULL_POLICY
           args:
             - "--listen=tcp://0.0.0.0:9000"
             - "--lock-with-host-addr=$(NODE_IP)"
