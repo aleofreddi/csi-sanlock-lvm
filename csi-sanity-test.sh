@@ -35,20 +35,20 @@ for i in \
     which "$f" >/dev/null 2>&1 || die "$me requires $f, $d"
 done
 
-tmpdir=`mktemp -d /tmp/csi-sanity-$$.XXXXX` || die Failed to allocate a temporary directory
+tmpdir="$(mktemp -d /tmp/csi-sanity-$$.XXXXX)" || die Failed to allocate a temporary directory
 rollback="echo Removing temporary directory \"$tmpdir\"; rm -rf \"$tmpdir\"; $rollback"
 trap "$rollback" EXIT
 
 imgfile="$tmpdir/img"
 fallocate -l 1GiB "$imgfile" || die Failed to allocate test image file
 
-device=`losetup --show -f "$imgfile"` || die Failed to setup loopback device
+device="$(losetup --show -f "$imgfile")" || die Failed to setup loopback device
 rollback="echo Detaching $device; losetup -d $device; $rollback"
 trap "$rollback" EXIT
 
-pvcreate -f $device || die Failed to create physical device
+pvcreate -f "$device" || die Failed to create physical device
 
-vgcreate vg_csi_sanity_$$ $device || die Failed to create volume group
+vgcreate vg_csi_sanity_$$ "$device" || die Failed to create volume group
 
 lvmctrld_sock="unix://$tmpdir/lvmctrld.sock"
 "$rootdir"/lvmctrld/bin/lvmctrld --listen "$lvmctrld_sock" &
