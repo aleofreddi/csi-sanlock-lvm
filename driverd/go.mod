@@ -8,6 +8,7 @@ require (
 	github.com/golang/mock v1.4.3
 	github.com/golang/protobuf v1.4.0
 	github.com/google/go-cmp v0.4.1
+	github.com/pkg/math v0.0.0-20141027224758-f2ed9e40e245 // indirect
 	github.com/slok/noglog v0.2.0 // indirect
 	github.com/spf13/afero v1.2.2 // indirect
 	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b

@@ -17,11 +17,12 @@ package driverd
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"os/exec"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/kubernetes/pkg/util/mount"
-	"os"
-	"os/exec"
 )
 
 type FileSystemFactoryInterface interface {
@@ -35,6 +36,7 @@ type FileSystem interface {
 	Make(device string) error
 	Grow(device string) error
 	Mount(source, mountPoint string, flags []string) error
+	Umount(mountPoint string) error
 }
 
 type rawFileSystem struct {
@@ -94,13 +96,17 @@ func (fs *rawFileSystem) Mount(source, mountPoint string, flags []string) error 
 	return nil
 }
 
+func (fs *rawFileSystem) Umount(mountPoint string) error {
+	return umount(mountPoint)
+}
+
 func (fs *ext4FileSystem) Make(device string) error {
 	mkfs := exec.Command("mkfs", "-t", "ext4", device)
 	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
 	mkfs.Stdout = stdout
 	mkfs.Stderr = stderr
 	if mkfs.Run() != nil {
-		return status.Errorf(codes.Internal, "failed to format volume %s: %s %s]", device, stdout.String(), stderr.String())
+		return status.Errorf(codes.Internal, "failed to format volume %s: %s %s", device, stdout.String(), stderr.String())
 	}
 	return nil
 }
@@ -111,7 +117,7 @@ func (fs *ext4FileSystem) Grow(device string) error {
 	resize2fs.Stdout = stdout
 	resize2fs.Stderr = stderr
 	if resize2fs.Run() != nil {
-		return status.Errorf(codes.Internal, "failed to resize volume")
+		return status.Errorf(codes.Internal, "failed to resize volume %s: %s %s", device, stdout.String(), stderr.String())
 	}
 	return nil
 }
@@ -138,5 +144,28 @@ func (fs *ext4FileSystem) Mount(source, mountPoint string, flags []string) error
 			return status.Error(codes.Internal, err.Error())
 		}
 	}
+	return nil
+}
+
+func (fs *ext4FileSystem) Umount(mountPoint string) error {
+	return umount(mountPoint)
+}
+
+func umount(targetPath string) error {
+	mounter := mount.New("")
+	notMounted, err := mounter.IsNotMountPoint(targetPath)
+	if err != nil && err == os.ErrNotExist || notMounted {
+		return nil
+	}
+
+	err = mounter.Unmount(targetPath)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to unmount %q: %s", targetPath, err.Error())
+	}
+
+	if err = os.RemoveAll(targetPath); err != nil {
+		return status.Errorf(codes.Internal, "failed to remove %q: %s", targetPath, err.Error())
+	}
+
 	return nil
 }

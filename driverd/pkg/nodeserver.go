@@ -16,7 +16,6 @@ package driverd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
@@ -24,7 +23,6 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
 )
 
 const topologyKeyNode = "csi-sanlock-lvm/topology"
@@ -154,15 +152,37 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.InvalidArgument, "missing target path")
 	}
 
-	targetPath := req.GetTargetPath()
-	err := mount.New("").Unmount(targetPath)
+	volumeId := req.GetVolumeId()
+
+	// Connect to lvmctrld
+	client, err := ns.lvmctrldClientFactory.NewLocal()
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to unmount %q: %s", targetPath, err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+	}
+	defer client.Close()
+
+	// Retrieve the filesystem type for the volume
+	lv, err := findLogicalVolume(ctx, client, volumeId)
+	if err != nil {
+		return nil, err
 	}
 
-	if err = os.RemoveAll(targetPath); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to remove %q: %s", targetPath, err.Error())
+	// Extract the filesystem
+	fsName, err := getFileSystemName(lv)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
+	fs, err := ns.newFileSystem(fsName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Unmount
+	err = fs.Umount(req.GetTargetPath())
+	if err != nil {
+		return nil, err
+	}
+
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 

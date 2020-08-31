@@ -87,6 +87,7 @@ message LvRemoveResponse {
 message LvsRequest {
     string target = 1;
     string select = 2;
+    repeated string sort = 3;
 }
 
 message LvsResponse {
