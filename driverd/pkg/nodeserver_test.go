@@ -964,3 +964,371 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 		})
 	}
 }
+
+func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
+	type fields struct {
+		nodeId                string
+		lvmctrldAddr          string
+		lvmctrldClientFactory pkg.LvmCtrldClientFactory
+		newFileSystem         pkg.FileSystemFactory
+	}
+	type args struct {
+		ctx context.Context
+		req *csi.NodeUnpublishVolumeRequest
+	}
+	tests := []struct {
+		name        string
+		fields      func(controller *gomock.Controller) *fields
+		args        args
+		want        *csi.NodeUnpublishVolumeResponse
+		wantErr     bool
+		wantErrCode codes.Code
+	}{
+		{
+			"Should fail when VolumeId is missing",
+			func(controller *gomock.Controller) *fields {
+				return &fields{
+					nodeId:       "node",
+					lvmctrldAddr: "addr",
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "",
+					TargetPath: "targetPath1",
+				},
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when TargetPath is missing",
+			func(controller *gomock.Controller) *fields {
+				return &fields{
+					nodeId:       "node",
+					lvmctrldAddr: "addr",
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId: "volume1",
+				},
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when fails to get lvmctrld client",
+			func(controller *gomock.Controller) *fields {
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(nil, errors.New("failed")),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "vg00/volume1",
+					TargetPath: "/target/path",
+				},
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should fail when Lvs fails",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								nil,
+								status.Error(codes.Internal, "internal error"),
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "vg00/volume1",
+					TargetPath: "/target/path",
+				},
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should fail when filesystem not found (not found error)",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								nil,
+								status.Error(codes.NotFound, "not found"),
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "vg00/volume1",
+					TargetPath: "/target/path",
+				},
+			},
+			nil,
+			true,
+			codes.NotFound,
+		},
+		{
+			"Should fail when filesystem not found (empty results)",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{}},
+								nil,
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "vg00/volume1",
+					TargetPath: "/target/path",
+				},
+			},
+			nil,
+			true,
+			codes.NotFound,
+		},
+		{
+			"Should fail when multiple filesystem tags",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi&2dsanlock&2dlvm.vleo.net&2ffs=raw", "csi&2dsanlock&2dlvm.vleo.net&2ffs=ext4"}}}},
+								nil,
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "vg00/volume1",
+					TargetPath: "/target/path",
+				},
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should fail when filesystem tag is missing",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{}}},
+								nil,
+							),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "vg00/volume1",
+					TargetPath: "/target/path",
+				},
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should fail when filesystem name is invalid",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi&2dsanlock&2dlvm.vleo.net&2ffs=raw"}}}},
+								nil,
+							),
+					filesystemFactory.EXPECT().
+						New("raw").Return(nil, errors.New("unknown filesystem")),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "vg00/volume1",
+					TargetPath: "/target/path",
+				},
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should unmount volume",
+			func(controller *gomock.Controller) *fields {
+				client := mock.NewMockLvmCtrldClient(controller)
+				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				filesystem := mock.NewMockFileSystem(controller)
+				filesystemFactory := mock.NewMockFileSystemFactoryInterface(controller)
+				gomock.InOrder(
+					factory.EXPECT().
+						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					client.EXPECT().
+							Lvs(
+								gomock.Any(),
+								CmpMatcher(t, &proto.LvsRequest{Target: "vg00/volume1", Select: "lv_role!=snapshot"}, protocmp.Transform()),
+								gomock.Any(),
+							).
+							Return(
+								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi&2dsanlock&2dlvm.vleo.net&2ffs=raw"}}}},
+								nil,
+							),
+					filesystemFactory.EXPECT().
+						New("raw").Return(filesystem, nil),
+					filesystem.EXPECT().
+						Umount("/target/path").
+						Return(nil),
+				)
+				return &fields{
+					nodeId:                "node",
+					lvmctrldAddr:          "addr",
+					lvmctrldClientFactory: factory,
+					newFileSystem:         filesystemFactory.New,
+				}
+			},
+			args{
+				context.Background(),
+				&csi.NodeUnpublishVolumeRequest{
+					VolumeId:   "vg00/volume1",
+					TargetPath: "/target/path",
+				},
+			},
+			&csi.NodeUnpublishVolumeResponse{},
+			false,
+			codes.OK,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+			fields := tt.fields(mockCtrl)
+			ns, _ := pkg.NewNodeServer(fields.nodeId, fields.lvmctrldAddr, fields.lvmctrldClientFactory, fields.newFileSystem)
+			got, err := ns.NodeUnpublishVolume(tt.args.ctx, tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NodeUnpublishVolume() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if (err != nil) && status.Code(err) != tt.wantErrCode {
+				t.Errorf("NodeUnpublishVolume() error code = %v, wantErrCode %v", status.Code(err), tt.wantErrCode)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NodeUnpublishVolume() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
