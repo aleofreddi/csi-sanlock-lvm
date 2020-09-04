@@ -63,6 +63,7 @@ var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   {},
 	csi.ControllerServiceCapability_RPC_EXPAND_VOLUME:          {},
 	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS:         {},
+	csi.ControllerServiceCapability_RPC_LIST_VOLUMES:           {},
 }
 
 type controllerServer struct {
@@ -466,11 +467,11 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 		}
 	}
 	if req.MaxEntries > 0 {
-		s = math.Min(s, i + int(req.MaxEntries))
+		s = math.Min(s, i+int(req.MaxEntries))
 	}
 
 	// Map entries
-	entries := make([]*csi.ListVolumesResponse_Entry, s - i)
+	entries := make([]*csi.ListVolumesResponse_Entry, s-i)
 	for j := 0; i < s; {
 		entries[j] = &csi.ListVolumesResponse_Entry{Volume: lvToVolume(lvs[i])}
 		j++
@@ -484,7 +485,7 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	}
 
 	return &csi.ListVolumesResponse{
-		Entries: entries,
+		Entries:   entries,
 		NextToken: next,
 	}, nil
 }
@@ -615,7 +616,7 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 	// List snapshots
 	volumes, err := client.Lvs(ctx, &proto.LvsRequest{
 		Select: strings.Join(filters, " && "),
-		Sort: []string{"vg_name", "lv_name"},
+		Sort:   []string{"vg_name", "lv_name"},
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list snapshots")
@@ -635,11 +636,11 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 		}
 	}
 	if req.MaxEntries > 0 {
-		s = math.Min(s, i + int(req.MaxEntries))
+		s = math.Min(s, i+int(req.MaxEntries))
 	}
 
 	// Map entries
-	entries := make([]*csi.ListSnapshotsResponse_Entry, s - i)
+	entries := make([]*csi.ListSnapshotsResponse_Entry, s-i)
 	for j := 0; i < s; {
 		entries[j] = &csi.ListSnapshotsResponse_Entry{Snapshot: lvToSnapshot(lvs[i])}
 		j++
@@ -653,7 +654,7 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 	}
 
 	return &csi.ListSnapshotsResponse{
-		Entries: entries,
+		Entries:   entries,
 		NextToken: next,
 	}, nil
 }
