@@ -456,8 +456,11 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 
 	// Paginate
 	i, s := 0, len(lvs)
-	if req.StartingToken != "" {
-		for startVg, startLv := volumeIdToVgLv(req.StartingToken); i < len(lvs); i++ {
+	if volumeId := req.StartingToken; volumeId != "" {
+		if !volumeIdRe.MatchString(volumeId) {
+			return nil, status.Errorf(codes.Aborted, "invalid starting token")
+		}
+		for startVg, startLv := volumeIdToVgLv(volumeId); i < len(lvs); i++ {
 			if lvs[i].VgName == startVg && lvs[i].LvName == startLv {
 				break
 			}
@@ -625,8 +628,11 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 
 	// Paginate
 	i, s := 0, len(lvs)
-	if req.StartingToken != "" {
-		for startVg, startLv := volumeIdToVgLv(req.StartingToken); i < len(lvs); i++ {
+	if volumeId := req.StartingToken; volumeId != "" {
+		if !volumeIdRe.MatchString(volumeId) {
+			return nil, status.Errorf(codes.Aborted, "invalid starting token")
+		}
+		for startVg, startLv := volumeIdToVgLv(volumeId); i < len(lvs); i++ {
 			if lvs[i].VgName == startVg && lvs[i].LvName == startLv {
 				break
 			}
