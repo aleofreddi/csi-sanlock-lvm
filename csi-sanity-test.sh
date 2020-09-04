@@ -72,5 +72,6 @@ csi-sanity \
     --csi.stagingdir "$tmpdir/staging" \
     --csi.testvolumeparameters "$param_file" \
     --csi.testvolumesize $((1024*1024)) \
+    --csi.testvolumeexpandsize $((2*1024*1024))
 
 exit $?
