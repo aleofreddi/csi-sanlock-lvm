@@ -31,7 +31,7 @@ mock: go.dep $(MOCK)
 proto: $(PROTO)
 
 bin/lvmctrld: go.dep $(SRC) $(PROTO)
-	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION)' -o ./bin/lvmctrld ./cmd
+	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION) -X main.commit=$(COMMIT)' -o ./bin/lvmctrld ./cmd
 
 test: go.dep $(MOCK) $(PROTO) $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg

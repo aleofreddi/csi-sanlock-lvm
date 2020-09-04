@@ -18,11 +18,12 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
-	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/pkg"
-	"k8s.io/klog"
 	"net"
 	"os"
 	"strconv"
+
+	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/pkg"
+	"k8s.io/klog"
 )
 
 var (
@@ -30,12 +31,13 @@ var (
 	hostId   = flag.String("lock-with-host-id", "", "enable locking, use the given host id. This option is mutually exclusive with lock-with-host-addr")
 	listen   = flag.String("listen", "tcp://0.0.0.0:9000", "listen address")
 	version  string
+	commit   string
 )
 
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
-	klog.Infof("Starting lvmctrld %s", version)
+	klog.Infof("Starting lvmctrld %s (%s)", version, commit)
 
 	// Parse host id
 	if *hostId != "" || *hostAddr != "" {

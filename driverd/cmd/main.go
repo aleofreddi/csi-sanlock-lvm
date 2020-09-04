@@ -16,9 +16,10 @@ package main
 
 import (
 	"flag"
+	"os"
+
 	driverd "github.com/aleofreddi/csi-sanlock-lvm/driverd/pkg"
 	"k8s.io/klog"
-	"os"
 )
 
 var (
@@ -27,12 +28,13 @@ var (
 	name     = flag.String("name", "csi-lvm-sanlock.vleo.net", "name of the driver")
 	nodeId   = flag.String("node-id", "", "node id")
 	version  string
+	commit   string
 )
 
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
-	klog.Infof("Starting driverd %s", version)
+	klog.Infof("Starting driverd %s (%s)", version, commit)
 
 	// Start server
 	listener, err := driverd.NewListener(*name, version, *nodeId, *listen, *lvmctrld)
