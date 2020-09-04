@@ -276,12 +276,13 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	}
 
 	// Remove owner tag
+	ownerTag := encodeTag(getOwnerTag(ns.nodeId, ns.lvmctrldAddr))
 	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
 		Target: volumeId,
-		DelTag: []string{encodeTag(fmt.Sprintf("%s%s@%s", ownerTag, ns.nodeId, ns.lvmctrldAddr))},
+		DelTag: []string{ownerTag},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to remove tag: %s", err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to remove tag: %v", err)
 	}
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
@@ -297,11 +298,14 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	if volumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume id")
 	}
+	if req.VolumePath == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume path")
+	}
 
 	// Connect to lvmctrld
 	client, err := ns.lvmctrldClientFactory.NewLocal()
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %v", err)
 	}
 	defer client.Close()
 
