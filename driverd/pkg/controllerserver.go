@@ -430,8 +430,21 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Errorf(codes.Internal, "failed to resize volume: %s", err.Error())
 	}
 
+	// Retrieve current size
+	lvs, err = client.Lvs(ctx, &proto.LvsRequest{
+		Select: "lv_role!=snapshot",
+		Target: volumeId,
+	})
+	if err != nil && status.Code(err) != codes.NotFound {
+		return nil, status.Errorf(codes.Internal, "failed to list volumes")
+	}
+	if err != nil && status.Code(err) == codes.NotFound || len(lvs.Lvs) != 1 {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", volumeId))
+	}
+
+	lv = lvs.Lvs[0]
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         int64(requiredBytes),
+		CapacityBytes:         int64(lv.LvSize),
 		NodeExpansionRequired: true,
 	}, nil
 }
