@@ -48,7 +48,7 @@ trap "$rollback" EXIT
 
 pvcreate -f "$device" || die Failed to create physical device
 
-vgcreate vg_csi_sanity_$$ "$device" || die Failed to create volume group
+vgcreate -s $((1024*1024))b vg_csi_sanity_$$ "$device" || die Failed to create volume group
 
 lvmctrld_sock="unix://$tmpdir/lvmctrld.sock"
 "$rootdir"/lvmctrld/bin/lvmctrld --listen "$lvmctrld_sock" &
@@ -72,6 +72,7 @@ csi-sanity \
     --csi.stagingdir "$tmpdir/staging" \
     --csi.testvolumeparameters "$param_file" \
     --csi.testvolumesize $((1024*1024)) \
-    --csi.testvolumeexpandsize $((2*1024*1024))
+    --csi.testvolumeexpandsize $((2*1024*1024)) \
+    "$@"
 
 exit $?
