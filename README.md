@@ -35,8 +35,8 @@ some time.
 
 Also, Sanlock requires every cluster node to get an unique integer in the range
 1-2000. This is implemented using least significant bits of the node ip address,
-which is ensured to work as long as all the nodes reside in a proper subnet
-(a `/22` block or smaller).
+which works as long as all the nodes reside in a subnet that contains at most
+2000 addresses (a `/22` subnet or smaller).
 
 ## Deployment
 
@@ -124,6 +124,14 @@ command from the root directory:
 ```shell
 $ make
 ```
+
+## Security
+
+Each node runs a `lvmctrld` container within the csi-sanlock-lvm pod that opens
+the TCP port 9000. Access to this port should be restricted only to the
+`csi-sanlock-lvm-system` namespace as it poses a strong security risk - anyone
+connecting to the port 9000 can access and manage logical volumes and volume
+groups on the node.
 
 ## Disclaimer
 
