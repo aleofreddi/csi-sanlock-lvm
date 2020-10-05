@@ -16,23 +16,23 @@ package lvmctrld
 
 import (
 	"context"
+	"sync/atomic"
+
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"google.golang.org/grpc"
 	"k8s.io/klog"
-	"sync/atomic"
 )
 
 var logUid uint32 = 0
 
 func GrpcLogger(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	id := atomic.AddUint32(&logUid, 1)
-	klog.Infof("gRPC[%d]: call %s", id, info.FullMethod)
-	klog.V(5).Infof("gRPC[%d]: request %+v", id, protosanitizer.StripSecrets(req))
+	klog.V(6).Infof("gRPC[%d]: calling %s(%+v)...", id, info.FullMethod, protosanitizer.StripSecrets(req))
 	resp, err := handler(ctx, req)
 	if err != nil {
-		klog.Errorf("gRPC[%d]: error %v", id, err)
+		klog.Errorf("gRPC[%d]: call %s(%+v) returned error %v", id, info.FullMethod, protosanitizer.StripSecrets(req), err)
 	} else {
-		klog.V(5).Infof("gRPC[%d]: response %+v", id, protosanitizer.StripSecrets(resp))
+		klog.V(5).Infof("gRPC[%d]: call %s(%+v) returned %+v", id, info.FullMethod, protosanitizer.StripSecrets(req), protosanitizer.StripSecrets(resp))
 	}
 	return resp, err
 }
