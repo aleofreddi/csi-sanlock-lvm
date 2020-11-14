@@ -23,7 +23,7 @@ me="$(basename $0)"
 rootdir="$(dirname $0)"
 rollback=:
 
-[[ "$(uname | tr [A-Z] [a-z])" = linux ]] || die "$me requires a Linux machine"
+[[ "$(uname | tr '[A-Z]' '[a-z]')" = linux ]] || die "$me requires a Linux machine"
 
 for i in \
     'csi-sanity:install using `go get github.com/kubernetes-csi/csi-test/cmd/csi-sanity`' \
