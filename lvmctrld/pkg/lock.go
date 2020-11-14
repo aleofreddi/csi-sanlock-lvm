@@ -22,7 +22,10 @@ import (
 )
 
 func StartLock(hostId uint16, volumeGroups []string) error {
-	if err := daemonize("sanlock", "daemon", "-w", "0", "-D"); err != nil {
+	if err := daemonize("wdmd", "-D"); err != nil {
+		return err
+	}
+	if err := daemonize("sanlock", "daemon", "-D"); err != nil {
 		return err
 	}
 	if err := daemonize("lvmlockd", "--host-id", fmt.Sprintf("%d", hostId), "-f"); err != nil {
