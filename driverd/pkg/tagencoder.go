@@ -22,8 +22,8 @@ import (
 
 func encodeTag(value string) string {
 	var sb strings.Builder
-	for _, b := range []byte(value) {
-		if isPlain(b) {
+	for i, b := range []byte(value) {
+		if isPlain(b, i) {
 			sb.WriteByte(b)
 		} else {
 			sb.WriteString(fmt.Sprintf("&%2x", b))
@@ -41,8 +41,8 @@ func decodeTag(encodedTag string) (string, error) {
 	)
 	var sb strings.Builder
 	qState := Normal
-	qValue := byte(0)
-	for _, b := range []byte(encodedTag) {
+	var qValue byte
+	for i, b := range []byte(encodedTag) {
 		if qState != Normal {
 			v, err := hexDecode(b)
 			if err != nil {
@@ -58,7 +58,7 @@ func decodeTag(encodedTag string) (string, error) {
 			}
 		} else if b == '&' {
 			qState = Quote1
-		} else if isPlain(b) {
+		} else if isPlain(b, i) {
 			sb.WriteByte(b)
 		} else {
 			return "", errors.New("encoded tag contains an invalid character")
@@ -70,12 +70,19 @@ func decodeTag(encodedTag string) (string, error) {
 	return sb.String(), nil
 }
 
-func isPlain(b byte) bool {
+func isPlain(b byte, pos int) bool {
 	return b >= 'a' && b <= 'z' ||
-		b >= 'A' && b <= 'Z' ||
-		b >= '0' && b <= '9' ||
-		b == '.' ||
-		b == '='
+			b >= 'A' && b <= 'Z' ||
+			b >= '0' && b <= '9' ||
+			b == '_' ||
+			b == '+' ||
+			b == '.' ||
+			(b == '-' && pos > 0) || // LVM doesn't allow hyphen starting tags
+			b == '/' ||
+			b == '=' ||
+			b == '!' ||
+			b == ':' ||
+			b == '#'
 }
 
 func hexDecode(hex byte) (byte, error) {

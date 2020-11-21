@@ -48,23 +48,21 @@ spec:
           image: quay.io/aleofreddi/csi-lvm-sanlock:$VERSION
           imagePullPolicy: $IMAGE_PULL_POLICY
           args:
-            - "--name=csi-sanlock-lvm.csi.vleo.net"
+            - "--driver-name=csi-sanlock-lvm.csi.vleo.net"
             - "--listen=$(CSI_ENDPOINT)"
-            - "--node-id=$(NODE_NAME)"
-            - "--lvmctrld=tcp://$(POD_IP):9000"
+            - "--node-name=$(NODE_NAME)"
+            - "--lvmctrld=$(LVMCTRLD_ENDPOINT)"
             - "--v=$(LOG_LEVEL)"
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
+            - name: LVMCTRLD_ENDPOINT
+              value: unix:///csi/lvmctrld.sock
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
             - name: LOG_LEVEL
               value: "3"
           securityContext:
@@ -115,12 +113,12 @@ spec:
           image: quay.io/aleofreddi/lvmctrld:$VERSION
           imagePullPolicy: $IMAGE_PULL_POLICY
           args:
-            - "--listen=tcp://0.0.0.0:9000"
+            - "--listen=$(LVMCTRLD_ENDPOINT)"
             - "--lock-with-host-addr=$(NODE_IP)"
             - "--v=$(LOG_LEVEL)"
           env:
-            - name: CSI_ENDPOINT
-              value: unix:///csi/csi.sock
+            - name: LVMCTRLD_ENDPOINT
+              value: unix:///csi/lvmctrld.sock
             - name: NODE_IP
               valueFrom:
                 fieldRef:
@@ -129,11 +127,9 @@ spec:
               value: "3"
           securityContext:
             privileged: true
-          ports:
-            - containerPort: 9000
-              name: lvmctrld
-              protocol: TCP
           volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
             - mountPath: /dev
               name: dev-dir
 

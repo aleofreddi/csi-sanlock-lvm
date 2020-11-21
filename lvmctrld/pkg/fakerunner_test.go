@@ -19,7 +19,7 @@ import (
 	"testing"
 )
 
-type FakeCommand struct {
+type fakeCommand struct {
 	exe    string
 	args   []string
 	rc     int
@@ -28,14 +28,14 @@ type FakeCommand struct {
 	err    error
 }
 
-type FakeCommander struct {
+type fakeRunner struct {
 	t *testing.T
 
-	executions []FakeCommand
+	executions []fakeCommand
 	current    int
 }
 
-func (c *FakeCommander) Exec(exe string, args ...string) (code int, stdout, stderr []byte, err error) {
+func (c *fakeRunner) Exec(exe string, args ...string) (code int, stdout, stderr []byte, err error) {
 	if c.current == len(c.executions) {
 		c.t.Errorf("unexpected exec invocation (%s, %v)", exe, args)
 		return 255, []byte{}, []byte{}, fmt.Errorf("unexpected invocation")

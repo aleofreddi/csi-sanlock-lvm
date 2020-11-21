@@ -15,14 +15,17 @@
 package driverd
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
+	"bufio"
 	"fmt"
+	"io"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
-	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
+	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/google/uuid"
 	"github.com/pkg/math"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
@@ -31,20 +34,17 @@ import (
 )
 
 const (
-	// Prefix to be used for volume logical volumes
-	volumeLvPrefix = "csi-v-"
-
-	// Prefix to be used for snapshot logical volumes
-	snapshotLvPrefix = "csi-s-"
-
+	// Volume parameter
 	vgParamKey = "volumeGroup"
-	fsParamKey = "filesystem"
 
 	DefaultCapacity = 1 << 20
+
+	// DiskRPC ID
+	controllerServerDiskRPCID = 0
 )
 
 var (
-	volumeIdRe = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*/[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	volumeIdRe = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*@[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
 	vgRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
 )
 
@@ -54,33 +54,43 @@ const (
 	MountAccessType VolumeAccessType = iota
 	BlockAccessType
 
-	BlockAccessFsName = "raw"
+	BlockAccessFsName = "$raw" // the $ prefix is to avoid colliding with a real filesystem name.
 )
 
 var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct{}{
-	//csi.ControllerServiceCapability_RPC_CLONE_VOLUME:           {}, // Not implemented yet
+	csi.ControllerServiceCapability_RPC_CLONE_VOLUME:           {},
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: {},
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   {},
 	csi.ControllerServiceCapability_RPC_EXPAND_VOLUME:          {},
 	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS:         {},
 	csi.ControllerServiceCapability_RPC_LIST_VOLUMES:           {},
+	// Add csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
+	// See https://github.com/container-storage-interface/spec/blob/master/spec.md#listvolumes
 }
 
 type controllerServer struct {
-	nodeId                string
-	lvmctrldAddr          string
-	lvmctrldClientFactory LvmCtrldClientFactory
+	baseServer
+	volumeLock *volumeLock
+	diskRpc    *diskRpc
+	defaultFs  string
 }
 
-func NewControllerServer(nodeId string, lvmctrldAddr string, factory LvmCtrldClientFactory) (*controllerServer, error) {
-	return &controllerServer{
-		nodeId:                nodeId,
-		lvmctrldAddr:          lvmctrldAddr,
-		lvmctrldClientFactory: factory,
-	}, nil
+func NewControllerServer(lvmctrld pb.LvmCtrldClient, volumeLock *volumeLock, diskRpc *diskRpc, defaultFs string) (*controllerServer, error) {
+	bs, err := newBaseServer(lvmctrld)
+	if err != nil {
+		return nil, err
+	}
+	cs := &controllerServer{
+		baseServer: *bs,
+		volumeLock: volumeLock,
+		diskRpc:    diskRpc,
+		defaultFs:  defaultFs,
+	}
+	diskRpc.SetTarget(controllerServerDiskRPCID, cs)
+	return cs, nil
 }
 
-func (cs *controllerServer) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
+func (cs *controllerServer) ControllerGetCapabilities(_ context.Context, _ *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	ctrlCpbs := make([]*csi.ControllerServiceCapability, 0, len(controllerCapabilities))
 	for cpb, _ := range controllerCapabilities {
 		ctrlCpbs = append(ctrlCpbs, &csi.ControllerServiceCapability{
@@ -107,11 +117,11 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	// Parse capabilities
 	var accessMode *csi.VolumeCapability_AccessMode_Mode
-	var accessType *VolumeAccessType
-	for _, cap := range req.GetVolumeCapabilities() {
+	var fsName string
+	for _, cpb := range req.GetVolumeCapabilities() {
 		var capAccessMode *csi.VolumeCapability_AccessMode_Mode
-		if cap.GetAccessMode() != nil {
-			v := cap.GetAccessMode().GetMode()
+		if cpb.GetAccessMode() != nil {
+			v := cpb.GetAccessMode().GetMode()
 			capAccessMode = &v
 		}
 		if capAccessMode != nil {
@@ -121,31 +131,26 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 				accessMode = capAccessMode
 			}
 		}
-
-		var capAccessType *VolumeAccessType
-		if cap.GetMount() != nil {
-			v := MountAccessType
-			capAccessType = &v
-		} else if cap.GetBlock() != nil {
-			v := BlockAccessType
-			capAccessType = &v
-		}
-		if capAccessType != nil {
-			if accessType != nil && *capAccessType != *accessType {
-				return nil, status.Error(codes.InvalidArgument, "inconsistent access type")
-			} else {
-				accessType = capAccessType
+		if m := cpb.GetMount(); m != nil {
+			if fsName != "" && fsName != m.GetFsType() {
+				return nil, status.Error(codes.InvalidArgument, "inconsistent volume access types")
 			}
+			fsName = m.GetFsType()
+		} else if cpb.GetBlock() != nil {
+			if fsName != "" && fsName != BlockAccessFsName {
+				return nil, status.Error(codes.InvalidArgument, "inconsistent volume access types")
+			}
+			fsName = BlockAccessFsName
 		}
-	}
-	if accessType == nil {
-		return nil, status.Error(codes.InvalidArgument, "missing access type")
 	}
 	if accessMode == nil {
 		return nil, status.Error(codes.InvalidArgument, "missing access mode")
 	}
 	if *accessMode != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER && *accessMode != csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY {
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported access mode %s", *accessMode)
+	}
+	if fsName == "" {
+		fsName = cs.defaultFs
 	}
 
 	// Parse parameters
@@ -160,102 +165,235 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if size == 0 {
 		size = DefaultCapacity
 	}
-	var fsName string
-	if *accessType == BlockAccessType {
-		fsName = BlockAccessFsName
-	} else {
-		var present bool
-		fsName, present = req.Parameters[fsParamKey]
-		if !present || fsName == "" {
-			return nil, status.Error(codes.InvalidArgument, "missing filesystem parameter")
+
+	vol := NewVolumeRefFromVgTypeName(vgName, VolumeVolType, req.GetName())
+	// Retrieve source if any
+	var srcVol, srcSnap, lockVol *VolumeInfo
+	var srcSize uint64
+	var err error
+	if src := req.VolumeContentSource; src != nil {
+		if src.GetSnapshot() != nil && src.GetVolume() != nil || src.GetSnapshot() == nil && src.GetVolume() == nil {
+			return nil, status.Errorf(codes.InvalidArgument, "a source snapshot or a source volume is required when content source is specified")
+		}
+		if s := src.GetSnapshot(); s != nil {
+			srcRef, err := NewVolumeRefFromID(s.GetSnapshotId())
+			if err != nil {
+				return nil, status.Errorf(codes.NotFound, "invalid source snapshot: %v", err)
+			}
+			if srcRef != nil && srcRef.Vg() != vol.Vg() {
+				return nil, status.Errorf(codes.InvalidArgument, "volume group %q must match the one of the source snapshot %q", vol.Vg(), srcRef.Vg())
+			}
+			srcSnap, err = cs.fetch(ctx, srcRef)
+			if err != nil {
+				return nil, err
+			}
+		} else if s := src.GetVolume(); s != nil {
+			srcRef, err := NewVolumeRefFromID(s.GetVolumeId())
+			if err != nil {
+				return nil, status.Errorf(codes.NotFound, "invalid source volume: %v", err)
+			}
+			if srcRef != nil && srcRef.Vg() != vol.Vg() {
+				return nil, status.Errorf(codes.InvalidArgument, "volume group %q must match the one of the source volume %q", vol.Vg(), srcRef.Vg())
+			}
+			srcVol, err = cs.fetch(ctx, srcRef)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// Set the volume to lock. For snapshots that would be the origin volume.
+		if srcVol != nil {
+			lockVol = srcVol
+		} else {
+			orig := srcSnap.OriginRef()
+			lockVol, err = cs.fetch(ctx, orig)
+			if err != nil {
+				return nil, err
+			}
+		}
+		tags, err := lockVol.Tags()
+		if err != nil {
+			return nil, err
+		}
+		srcFsName, ok := tags[fsTagKey]
+		if !ok {
+			return nil, status.Errorf(codes.InvalidArgument, "missing %s tag on volume %q", fsTagKey, lockVol)
+		}
+		if srcFsName != fsName {
+			return nil, status.Errorf(codes.InvalidArgument, "incompatible filesystem: source filesystem %s, target filesystem %s", srcFsName, fsName)
+		}
+		srcSize = lockVol.LvSize
+		if size < srcSize {
+			return nil, status.Errorf(codes.InvalidArgument, "source content requires at least %d bytes, got only %d bytes", srcSize, size)
 		}
 	}
 
 	// Retrieve filesystem
 	fs, err := NewFileSystem(fsName)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to lookup filesystem: %s", err.Error())
+		return nil, err
 	}
 
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewLocal()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
-	}
-	defer client.Close()
+	// Create a map of temporary filesystems
+	cleanupVols := make(map[string]struct{})
+	defer func() {
+		for v, _ := range cleanupVols {
+			klog.V(5).Infof("Cleaning up temporary volume %q", v)
+			_, err = cs.lvmctrld.LvRemove(ctx, &pb.LvRemoveRequest{
+				Target: []string{v},
+			})
+			if err != nil {
+				klog.Warningf("Failed to remove temporary volume %q: %v", v, err)
+			}
+		}
+	}()
 
-	// Create volume
-	lvName := volumeNameToLvName(req.GetName())
-	volumeId := fmt.Sprintf("%s/%s", vgName, lvName)
-	_, err = client.LvCreate(
+	// Create a temporary snapshot from src volume, if specified
+	var dataVol *VolumeRef
+	if lockVol != nil {
+		// Try to acquire exclusive lock on orig, or delegate to owner node if already locked.
+		klog.V(3).Infof("Trying to acquire lock on %q to read source data", lockVol)
+		// We add a uuid because we don't want this lock to be reentrant.
+		lockId := fmt.Sprintf("CreateVolume(%s,%s)", vol, uuid.New().String())
+		err = cs.volumeLock.LockVolume(ctx, lockVol.VolumeRef, lockId)
+		if status.Code(err) == codes.PermissionDenied {
+			ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, lockVol.VolumeRef)
+			if err != nil {
+				return nil, err
+			}
+			klog.V(3).Infof("Delegating CreateVolume(%s) to node %s because it owns %s", vol, ownerNode, lockVol)
+			res := csi.CreateVolumeResponse{}
+			err = cs.diskRpc.Invoke(ctx, ownerId, controllerServerDiskRPCID, "CreateVolume", req, &res)
+			klog.V(5).Infof("CreateVolume(%s) on node %s returned (%+v, %v)", vol, ownerNode, res, err)
+			return &res, err
+		} else if err != nil {
+			return nil, err
+		}
+		defer cs.tryVolumeUnlock(ctx, lockVol.VolumeRef, lockId)
+
+		if srcVol != nil {
+			// When cloning a volume, we'll create a temporary snapshot to have a consistent data view.
+			dataVol = NewVolumeRefFromVgTypeName(srcVol.Vg(), TemporaryVolType, uuid.New().String())
+			klog.V(3).Infof("Content source is a volume, using a temporary snapshot %s as content source", dataVol)
+			_, err = cs.lvmctrld.LvCreate(
+				ctx,
+				&pb.LvCreateRequest{
+					VgName:   dataVol.Vg(),
+					LvName:   dataVol.Lv(),
+					Origin:   srcVol.Lv(),
+					Activate: pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
+					Size:     srcSize, // FIXME: we should support tweaking this!
+				},
+			)
+			// Add dataVol data lv to cleanup list
+			cleanupVols[dataVol.VgLv()] = struct{}{}
+		} else {
+			klog.V(3).Infof("Using the snapshot %s as content source", dataVol)
+			dataVol = &srcSnap.VolumeRef
+		}
+	}
+
+	// Create data volume
+	tags := map[TagKey]string{
+		fsTagKey:   fsName,
+		nameTagKey: req.GetName(),
+	}
+	if srcVol != nil {
+		tags[sourceTagKey] = srcVol.ID()
+	}
+	_, err = cs.lvmctrld.LvCreate(
 		ctx,
-		&proto.LvCreateRequest{
-			VgName:   vgName,
-			LvName:   lvName,
-			Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
+		&pb.LvCreateRequest{
+			VgName:   vol.Vg(),
+			LvName:   vol.Lv(),
+			Activate: pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
 			Size:     size,
-			LvTags: []string{
-				encodeTag(nameTag + req.GetName()),
-				encodeTag(getOwnerTag(cs.nodeId, cs.lvmctrldAddr)),
-				encodeTag(getTransientTag(cs.nodeId)),
-				encodeTag(fsTag + fsName),
-			},
+			LvTags:   encodeTags(tags),
 		},
 	)
 	if err != nil {
-		if status.Code(err) == codes.OutOfRange {
-			return nil, status.Errorf(codes.OutOfRange, "insufficient free space")
-		}
 		if status.Code(err) == codes.AlreadyExists {
-			lvs, err := client.Lvs(ctx, &proto.LvsRequest{
-				Select: "lv_role!=snapshot",
-				Target: volumeId,
-			})
-			if err != nil || len(lvs.Lvs) != 1 {
-				return nil, status.Errorf(codes.Internal, "failed to list volumes")
+			d, err := cs.fetch(ctx, vol)
+			if status.Code(err) == codes.NotFound {
+				// The volume was there, but now it disappeared due to a concurrent operation.
+				return nil, status.Errorf(codes.Aborted, "operation already in progress on volume %s", vol)
+			} else if err != nil {
+				return nil, err
 			}
-			existing := lvs.Lvs[0]
-			if uint64(req.GetCapacityRange().GetRequiredBytes()) > existing.LvSize {
-				return nil, status.Errorf(codes.AlreadyExists, "volume with the same name %s but with different size already exist", req.GetName())
+			// FIXME: check that `existing` is a volume, not a snapshot
+			// FIXME: check that sourceTag matches srcVol
+			if uint64(req.GetCapacityRange().GetRequiredBytes()) > d.LvSize {
+				return nil, status.Errorf(codes.AlreadyExists, "volume with the same name but with different size already exist")
 			}
 			return &csi.CreateVolumeResponse{
-				Volume: lvToVolume(existing),
+				Volume: lvToVolume(&d.LogicalVolume),
 			}, nil
 		}
-		return nil, status.Errorf(codes.Internal, "failed to create volume %s: %s", req.GetName(), err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to create volume %s: %v", vol, err)
+	}
+	// Add new volume to cleanup list
+	cleanupVols[vol.VgLv()] = struct{}{}
+	// Now lock the new volume
+	lockId := fmt.Sprintf("CreateVolume(%s,%s)", vol, uuid.New().String())
+	if err := cs.volumeLock.LockVolume(ctx, *vol, lockId); err != nil {
+		return nil, err
+	}
+	defer cs.tryVolumeUnlock(ctx, *vol, lockId)
+
+	if dataVol == nil {
+		// Format the volume if no source is specified, else copy the data
+		klog.Infof("Formatting the volume %s with %s", vol, fsName)
+		err = fs.Make(vol.DevPath())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to format volume: %v", err)
+		}
+	} else {
+		// Copy data from dataVol
+		klog.Infof("Starting to copy %d bytes from source volume %s to target volume %s", srcSize, dataVol, vol)
+		srcFile, err := os.Open(dataVol.DevPath())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to open source volume %s: %v", dataVol, err)
+		}
+		defer func() {
+			if srcFile != nil {
+				if err := srcFile.Close(); err != nil {
+					klog.Warningf("Failed to close %s: %v", srcFile.Name(), err)
+				}
+			}
+		}()
+		dstFile, err := os.OpenFile(vol.DevPath(), os.O_RDWR, 0700)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to open destination volume %s: %v", vol, err)
+		}
+		defer func() {
+			if dstFile != nil {
+				if err := dstFile.Close(); err != nil {
+					klog.Warningf("Failed to close %s: %v", dstFile.Name(), err)
+				}
+			}
+		}()
+
+		written, err := io.Copy(bufio.NewWriter(dstFile), bufio.NewReader(srcFile))
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to copy source content: %v", err)
+		}
+		if uint64(written) != srcSize {
+			return nil, status.Errorf(codes.Internal, "failed to copy source content: copied %d bytes, expected %d bytes", written, srcSize)
+		}
+		if err = srcFile.Close(); err != nil {
+			klog.Warningf("Failed to close %s: %v", srcFile.Name(), err)
+		}
+		if err = dstFile.Close(); err != nil {
+			klog.Warningf("Failed to close %s: %v", dstFile.Name(), err)
+		}
+		srcFile = nil
+		dstFile = nil
+		klog.Infof("Copied %d bytes from source volume %s to target volume %s", srcSize, dataVol, vol)
 	}
 
-	// Format the volume if needed
-	klog.Infof("Formatting volume")
-	err = fs.Make("/dev/" + volumeId)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to format volume: %s", err.Error())
-	}
-
-	// Deactivate the volume
-	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
-		Target:   volumeId,
-		Activate: proto.LvActivationMode_DEACTIVATE,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to deactivate volume: %s", err.Error())
-	}
-
-	// Remove transient and owner tag
-	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
-		Target: volumeId,
-		DelTag: []string{
-			encodeTag(getTransientTag(cs.nodeId)),
-			encodeTag(getOwnerTag(cs.nodeId, cs.lvmctrldAddr)),
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to remove tags: %s", err.Error())
-	}
-
+	delete(cleanupVols, vol.VgLv())
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      volumeId,
+			VolumeId:      vol.ID(),
 			CapacityBytes: req.GetCapacityRange().GetRequiredBytes(),
 			VolumeContext: req.GetParameters(),
 			ContentSource: req.GetVolumeContentSource(),
@@ -274,36 +412,30 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewLocal()
+	vol, err := NewVolumeRefFromID(volumeId)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
-	defer client.Close()
 
-	vgName, lvName := volumeIdToVgLv(volumeId)
-
-	// Try to remove the volume. If it's an origin for some snapshot, it will be skipped
-	_, err = client.LvRemove(ctx, &proto.LvRemoveRequest{
+	// Try to remove the volume. If it's an origin for some snapshot it will be skipped
+	_, err = cs.lvmctrld.LvRemove(ctx, &pb.LvRemoveRequest{
 		Select: "lv_role!=origin",
-		VgName: vgName,
-		LvName: lvName,
+		Target: []string{vol.VgLv()},
 	})
 	if err != nil && status.Code(err) != codes.NotFound {
-		return nil, status.Errorf(codes.Internal, "failed to delete volume %s: %s", volumeId, err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to delete volume %s: %v", vol, err)
 	}
 
 	// Check if the volume still exists. It could be that lvremove didn't fail but didn't match the volume either (because it is a snapshot origin)
 	if err == nil {
-		_, err = client.Lvs(ctx, &proto.LvsRequest{
-			Select: "lv_role!=snapshot",
-			Target: req.GetVolumeId(),
+		_, err = cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
+			Target: []string{vol.VgLv()},
 		})
 		if err == nil {
 			return nil, status.Error(codes.FailedPrecondition, "failed to delete volume because of dependant snapshot")
 		}
 		if status.Code(err) != codes.NotFound {
-			return nil, status.Errorf(codes.Internal, "failed to list volumes")
+			return nil, status.Errorf(codes.Internal, "failed to list volume %s: %v", vol, err)
 		}
 	}
 	return &csi.DeleteVolumeResponse{}, nil
@@ -316,22 +448,19 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, "missing volume id")
 	}
 	if !volumeIdRe.MatchString(volumeId) {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", req.GetVolumeId()))
+		return nil, status.Errorf(codes.NotFound, "volume %s not found", req.GetVolumeId())
 	}
 	if len(req.VolumeCapabilities) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "missing volume capabilities")
 	}
 
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewLocal()
+	vol, err := NewVolumeRefFromID(volumeId)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
-	defer client.Close()
 
-	volume, err := client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role!=snapshot",
-		Target: volumeId,
+	volume, err := cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
+		Target: []string{vol.VgLv()},
 	})
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", req.GetVolumeId()))
@@ -361,18 +490,11 @@ func (cs *controllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		filters = append(filters, "vg_name="+vgName)
 	}
 
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewLocal()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
-	}
-	defer client.Close()
-
-	vgs, err := client.Vgs(ctx, &proto.VgsRequest{
+	vgs, err := cs.lvmctrld.Vgs(ctx, &pb.VgsRequest{
 		Select: strings.Join(filters, " && "),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes")
+		return nil, status.Errorf(codes.Internal, "failed to volume groups: %v", err)
 	}
 
 	var free int64
@@ -388,82 +510,47 @@ func (cs *controllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	// Check arguments
 	volumeId := req.GetVolumeId()
+	if volumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	}
 	if !volumeIdRe.MatchString(volumeId) {
-		return nil, status.Error(codes.InvalidArgument, "invalid volume id")
+		return nil, status.Errorf(codes.NotFound, "invalid volume id %q", volumeId)
 	}
 	if req.GetCapacityRange() == nil {
 		return nil, status.Error(codes.InvalidArgument, "missing capacity range")
 	}
 
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewForVolume(volumeId, ctx)
+	vol, err := NewVolumeRefFromID(volumeId)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
-	defer client.Close()
-
-	vgName, lvName := volumeIdToVgLv(volumeId)
 
 	// Retrieve current size
-	lvs, err := client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role!=snapshot",
-		Target: volumeId,
-	})
-	if err != nil && status.Code(err) != codes.NotFound {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes")
-	}
-	if err != nil && status.Code(err) == codes.NotFound || len(lvs.Lvs) != 1 {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", volumeId))
+	d, err := cs.fetch(ctx, vol)
+	if err != nil {
+		return nil, err
 	}
 
-	lv := lvs.Lvs[0]
+	// We always return NodeExpansionRequired to ensure that the filesystem size
+	// matches the volume size, in case the CO looses state.
 	requiredBytes := uint64(req.CapacityRange.RequiredBytes)
-	if lv.LvSize >= requiredBytes {
-		// Logical volume size is already greater or equal to the one requested. However, we issue a NodeExpansionRequired
-		// to ensure that the node resize is processed if CO looses state.
-		return &csi.ControllerExpandVolumeResponse{CapacityBytes: int64(lv.LvSize), NodeExpansionRequired: true}, nil
+	if d.LvSize >= requiredBytes {
+		return &csi.ControllerExpandVolumeResponse{CapacityBytes: int64(d.LvSize), NodeExpansionRequired: true}, nil
 	}
-
-	// Issue the resize
-	_, err = client.LvResize(ctx, &proto.LvResizeRequest{VgName: vgName, LvName: lvName, Size: requiredBytes})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to resize volume: %s", err.Error())
-	}
-
-	// Retrieve current size
-	lvs, err = client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role!=snapshot",
-		Target: volumeId,
-	})
-	if err != nil && status.Code(err) != codes.NotFound {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes")
-	}
-	if err != nil && status.Code(err) == codes.NotFound || len(lvs.Lvs) != 1 {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", volumeId))
-	}
-
-	lv = lvs.Lvs[0]
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         int64(lv.LvSize),
+		CapacityBytes:         int64(requiredBytes), //int64(lv.LvSize),
 		NodeExpansionRequired: true,
 	}, nil
 }
 
 func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewLocal()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
-	}
-	defer client.Close()
-
 	// List volumes
-	volumes, err := client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role!=snapshot",
+	volumes, err := cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
+		Select: "lv_name=~^" + volumeLvPrefix,
 		Sort:   []string{"vg_name", "lv_name"},
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes")
+		return nil, status.Errorf(codes.Internal, "failed to list volumes: %v", err)
 	}
 	lvs := volumes.Lvs
 
@@ -473,8 +560,12 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 		if !volumeIdRe.MatchString(volumeId) {
 			return nil, status.Errorf(codes.Aborted, "invalid starting token")
 		}
-		for startVg, startLv := volumeIdToVgLv(volumeId); i < len(lvs); i++ {
-			if lvs[i].VgName == startVg && lvs[i].LvName == startLv {
+		vol, err := NewVolumeRefFromID(volumeId)
+		if err != nil {
+			return nil, err
+		}
+		for ; i < len(lvs); i++ {
+			if lvs[i].VgName == vol.Vg() && lvs[i].LvName == vol.Lv() {
 				break
 			}
 		}
@@ -497,7 +588,8 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	// Set next page token if any
 	next := ""
 	if s < len(lvs) {
-		next = fmt.Sprintf("%s/%s", lvs[s].VgName, lvs[s].LvName)
+		vol := NewVolumeDetailsFromLv(*lvs[s])
+		next = vol.ID()
 	}
 
 	return &csi.ListVolumesResponse{
@@ -515,60 +607,63 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		return nil, status.Error(codes.InvalidArgument, "invalid source volume id")
 	}
 
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewForVolume(req.GetSourceVolumeId(), ctx)
+	// Retrieve origin and snapshot volumes
+	orig, err := NewVolumeRefFromID(req.GetSourceVolumeId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "invalid source volume: %v", err)
 	}
-	defer client.Close()
+	snap := NewVolumeRefFromVgTypeName(orig.Vg(), SnapshotVolType, req.GetName())
+
+	// Acquire exclusive lock on orig, or delegate to owner node if already locked
+	// We add a uuid because we don't want this lock to be reentrant.
+	lockId := fmt.Sprintf("CreateSnapshot(%s,%s)", snap, uuid.New().String())
+	err = cs.volumeLock.LockVolume(ctx, *orig, lockId)
+	if status.Code(err) == codes.PermissionDenied {
+		ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, *orig)
+		if err != nil {
+			return nil, err
+		}
+		klog.V(3).Infof("Delegating CreateSnapshot(%s) to node %s because it owns %s", snap, ownerNode, orig)
+		res := csi.CreateSnapshotResponse{}
+		err = cs.diskRpc.Invoke(ctx, ownerId, controllerServerDiskRPCID, "CreateSnapshot", req, &res)
+		klog.V(5).Infof("CreateSnapshot(%s) on node %s returned (%+v, %v)", snap, ownerNode, res, err)
+		return &res, err
+	} else if err != nil {
+		return nil, err
+	}
+	defer cs.tryVolumeUnlock(ctx, *orig, lockId)
 
 	// Create snapshot
-	originId := req.GetSourceVolumeId()
-	vgName, origLvName := volumeIdToVgLv(originId)
-	lvName := snapshotNameToLvName(req.GetName())
-	volumeId := fmt.Sprintf("%s/%s", vgName, lvName)
-	_, err = client.LvCreate(
+	_, err = cs.lvmctrld.LvCreate(
 		ctx,
-		&proto.LvCreateRequest{
-			VgName:   vgName,
-			LvName:   lvName,
-			Activate: proto.LvActivationMode_DEACTIVATE,
-			Size:     uint64(20 * (1 << 20)), // FIXME
-			Origin:   origLvName,
-			LvTags: []string{
-				encodeTag(nameTag + req.GetName()),
-				encodeTag(getOwnerTag(cs.nodeId, cs.lvmctrldAddr)),
-			},
+		&pb.LvCreateRequest{
+			VgName: snap.Vg(),
+			LvName: snap.Lv(),
+			Size:   uint64(20 * (1 << 20)), // FIXME
+			Origin: orig.Lv(),
+			LvTags: encodeTags(map[TagKey]string{
+				nameTagKey:   req.GetName(),
+				sourceTagKey: orig.ID(),
+			}),
 		},
 	)
-	if status.Code(err) == codes.OutOfRange {
-		return nil, status.Errorf(codes.OutOfRange, "insufficient free space")
-	}
 	if err != nil && status.Code(err) != codes.AlreadyExists {
-		return nil, status.Errorf(codes.Internal, "failed to create snapshot %s: %s", req.GetName(), err.Error())
+		// Creation failed with a code != AlreadyExists
+		return nil, err
 	}
 
-	// Read back the snapshot and return it
-	lvs, err := client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role=snapshot",
-		Target: volumeId,
-	})
-	if err != nil || len(lvs.Lvs) != 1 {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes")
-	}
-	existing := lvs.Lvs[0]
-	if origLvName != existing.Origin {
-		return nil, status.Errorf(codes.AlreadyExists, "snapshot with the same name: %s but with different SourceVolumeId already exist", req.GetName())
+	d, err := cs.fetch(ctx, snap)
+	if status.Code(err) == codes.NotFound {
+		// The volume was there, but now it disappeared due to a concurrent operation.
+		return nil, status.Errorf(codes.Aborted, "operation already in progress on snapshot %s", snap)
+	} else if err != nil {
+		return nil, err
 	}
 
-	// Force origin deactivate if it is not active. This is a workaround for an unexpected lvm behavior. See
-	// https://www.redhat.com/archives/linux-lvm/2020-March/msg00000.html for more context.
-	_, _ = client.LvChange(ctx, &proto.LvChangeRequest{
-		Target:   fmt.Sprintf("%s/%s", vgName, origLvName),
-		Activate: proto.LvActivationMode_DEACTIVATE,
-		Select:   "lv_active!=active",
-	})
-	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(lvs.Lvs[0])}, nil
+	if d.Origin != orig.Lv() {
+		return nil, status.Errorf(codes.AlreadyExists, "snapshot with the same name %q but different origin already exist", req.GetName())
+	}
+	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(&d.LogicalVolume)}, nil
 }
 
 func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
@@ -581,36 +676,64 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 		return &csi.DeleteSnapshotResponse{}, nil
 	}
 
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewForVolume(req.GetSnapshotId(), ctx)
+	// Retrieve snapshot and its origin
+	snapRef, err := NewVolumeRefFromID(volumeId)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
-	defer client.Close()
+	snap, err := cs.fetch(ctx, snapRef)
+	if err != nil {
+		return nil, err
+	}
+	orig := snap.OriginRef()
+	lockVol, err := cs.fetch(ctx, orig)
+	if err != nil {
+		return nil, err
+	}
+	klog.V(3).Infof("Resolved origin for %s to %s", snap, lockVol)
 
-	// Remove volume
-	vgName, lvName := volumeIdToVgLv(volumeId)
-	_, err = client.LvRemove(ctx, &proto.LvRemoveRequest{
-		VgName: vgName,
-		LvName: lvName,
+	// Acquire exclusive lock on orig, or delegate to owner node if already locked
+	// We add a uuid because we don't want this lock to be reentrant.
+	lockId := fmt.Sprintf("DeleteSnapshot(%s,%s)", snap, uuid.New().String())
+	err = cs.volumeLock.LockVolume(ctx, lockVol.VolumeRef, lockId)
+	if status.Code(err) == codes.PermissionDenied {
+		ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, *orig)
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "failed to retrieve owner node for locked volume %q: %v", orig, err)
+		}
+		klog.V(3).Infof("Delegating CreateSnapshot(%s) to node %s because it owns %s", snap, ownerNode, orig)
+		res := csi.DeleteSnapshotResponse{}
+		err = cs.diskRpc.Invoke(ctx, ownerId, controllerServerDiskRPCID, "DeleteSnapshot", req, &res)
+		klog.V(5).Infof("DeleteSnapshot(%s) on node %s returned (%+v, %v)", snap, ownerNode, res, err)
+		return &res, err
+	} else if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to lock %s: %v", orig, err)
+	}
+	defer cs.tryVolumeUnlock(ctx, lockVol.VolumeRef, lockId)
+
+	// Remove snapshot
+	_, err = cs.lvmctrld.LvRemove(ctx, &pb.LvRemoveRequest{
+		Target: []string{snap.VgLv()},
 	})
 	if err != nil && status.Code(err) != codes.NotFound {
-		return nil, status.Errorf(codes.Internal, "failed to delete snapshot %s: %s", volumeId, err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to delete snapshot %s: %v", volumeId, err)
 	}
-
 	return &csi.DeleteSnapshotResponse{}, nil
 }
 
 func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	filters := []string{"lv_role=snapshot"}
+	filters := []string{"lv_name=~^" + snapshotLvPrefix}
 	if req.GetSnapshotId() != "" {
 		if !volumeIdRe.MatchString(req.GetSnapshotId()) {
 			return &csi.ListSnapshotsResponse{
 				Entries: nil,
 			}, nil
 		}
-		vgName, lvName := volumeIdToVgLv(req.GetSnapshotId())
-		filters = append(filters, "vg_name="+vgName, "lv_name="+lvName)
+		vol, err := NewVolumeRefFromID(req.GetSnapshotId())
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid snapshot id: %v", err)
+		}
+		filters = append(filters, "vg_name="+vol.Vg(), "lv_name="+vol.Lv())
 	}
 	if req.GetSourceVolumeId() != "" {
 		if !volumeIdRe.MatchString(req.GetSourceVolumeId()) {
@@ -618,24 +741,20 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 				Entries: nil,
 			}, nil
 		}
-		vgName, lvName := volumeIdToVgLv(req.GetSourceVolumeId())
-		filters = append(filters, "vg_name="+vgName, "origin="+lvName)
+		vol, err := NewVolumeRefFromID(req.GetSourceVolumeId())
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid source volume id: %v", err)
+		}
+		filters = append(filters, "vg_name="+vol.Vg(), "origin="+vol.Lv())
 	}
-
-	// Connect to lvmctrld
-	client, err := cs.lvmctrldClientFactory.NewLocal()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
-	}
-	defer client.Close()
 
 	// List snapshots
-	volumes, err := client.Lvs(ctx, &proto.LvsRequest{
+	volumes, err := cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
 		Select: strings.Join(filters, " && "),
 		Sort:   []string{"vg_name", "lv_name"},
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list snapshots")
+		return nil, status.Errorf(codes.Internal, "failed to list snapshots: %v", err)
 	}
 	lvs := volumes.Lvs
 
@@ -645,8 +764,12 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 		if !volumeIdRe.MatchString(volumeId) {
 			return nil, status.Errorf(codes.Aborted, "invalid starting token")
 		}
-		for startVg, startLv := volumeIdToVgLv(volumeId); i < len(lvs); i++ {
-			if lvs[i].VgName == startVg && lvs[i].LvName == startLv {
+		vol, err := NewVolumeRefFromID(volumeId)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
+		}
+		for ; i < len(lvs); i++ {
+			if lvs[i].VgName == vol.Vg() && lvs[i].LvName == vol.Lv() {
 				break
 			}
 		}
@@ -669,7 +792,8 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 	// Set next page token if any
 	next := ""
 	if s < len(lvs) {
-		next = fmt.Sprintf("%s/%s", lvs[s].VgName, lvs[s].LvName)
+		vol := NewVolumeRefFromLv(*lvs[s])
+		next = vol.ID()
 	}
 
 	return &csi.ListSnapshotsResponse{
@@ -686,43 +810,43 @@ func (cs *controllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	return nil, status.Error(codes.Unimplemented, "not implemented")
 }
 
-func volumeIdToVgLv(volumeId string) (string, string) {
-	tokens := strings.Split(volumeId, "/")
-	return tokens[0], tokens[1]
+func (cs *controllerServer) tryVolumeUnlock(ctx context.Context, vol VolumeRef, lockId string) {
+	if err := cs.volumeLock.UnlockVolume(ctx, vol, lockId); err != nil {
+		klog.Warningf("Failed to unlock volume %s, unlock skipped: %v", vol, err)
+	}
 }
 
-func volumeNameToLvName(volumeName string) string {
-	return objectNameToLvName(volumeLvPrefix, volumeName)
-}
-
-func snapshotNameToLvName(volumeName string) string {
-	return objectNameToLvName(snapshotLvPrefix, volumeName)
-}
-
-func objectNameToLvName(prefix, volumeName string) string {
-	h := sha256.New()
-	h.Write([]byte(volumeName))
-	b64 := base64.StdEncoding.WithPadding(base64.NoPadding).EncodeToString(h.Sum(nil))
-	// LVM doesn't like the '/' character, replace with '_'
-	return prefix + strings.ReplaceAll(b64, "/", "_")
-}
-
-func lvToVolume(lv *proto.LogicalVolume) *csi.Volume {
+func lvToVolume(lv *pb.LogicalVolume) *csi.Volume {
+	vol := NewVolumeDetailsFromLv(*lv)
 	return &csi.Volume{
+		VolumeId:      vol.ID(),
 		CapacityBytes: int64(lv.LvSize),
-		VolumeId:      fmt.Sprintf("%s/%s", lv.VgName, lv.LvName),
 		//VolumeContext:        nil,
 		//ContentSource:        nil,
 		//AccessibleTopology:   nil,
 	}
 }
 
-func lvToSnapshot(lv *proto.LogicalVolume) *csi.Snapshot {
+func lvToSnapshot(lv *pb.LogicalVolume) *csi.Snapshot {
+	snap := NewVolumeDetailsFromLv(*lv)
+	orig := snap.OriginRef()
 	return &csi.Snapshot{
-		SnapshotId:     fmt.Sprintf("%s/%s", lv.VgName, lv.LvName),
-		SourceVolumeId: fmt.Sprintf("%s/%s", lv.VgName, lv.Origin),
+		SnapshotId:     snap.ID(),
+		SourceVolumeId: orig.ID(),
 		ReadyToUse:     true,
 		CreationTime:   lv.LvTime,
 		SizeBytes:      int64(lv.LvSize),
 	}
+}
+
+func nodeIDToString(nodeID uint16) string {
+	return strconv.Itoa(int(nodeID))
+}
+
+func nodeIDFromString(node string) (uint16, error) {
+	nodeID, err := strconv.Atoi(node)
+	if err != nil || nodeID < 0 || nodeID > 2000 {
+		return 0, fmt.Errorf("invalid node id %q: %v", node, err)
+	}
+	return uint16(nodeID), nil
 }

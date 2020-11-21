@@ -16,7 +16,6 @@ package driverd
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 
@@ -54,7 +53,7 @@ func NewFileSystem(fs string) (FileSystem, error) {
 	case "ext4":
 		return &ext4FileSystem{mount.New("")}, nil
 	}
-	return nil, fmt.Errorf("invalid filesystem %q", fs)
+	return nil, status.Errorf(codes.Internal, "invalid filesystem %q", fs)
 }
 
 func (fs *rawFileSystem) Make(device string) error {
@@ -73,22 +72,18 @@ func (fs *rawFileSystem) Mount(source, mountPoint string, flags []string) error 
 	mounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
 	if err != nil {
 		if os.IsExist(err) {
-			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %s", mountPoint, err.Error())
+			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %v", mountPoint, err)
 		}
-		if err = fs.mounter.MakeFile(mountPoint); err != nil {
-			return status.Errorf(codes.Internal, "failed to create file %s: %s", mountPoint, err.Error())
+		if err = fs.mounter.MakeDir(mountPoint); err != nil {
+			return status.Errorf(codes.Internal, "failed to create mount point %s: %v", mountPoint, err)
 		}
 		mounted = true
 	}
 
 	if mounted {
-		// Get Options
-		options := []string{"bind"}
-		options = append(options, flags...)
-
 		// Mount
 		mounter := mount.New("")
-		err = mounter.Mount(source, mountPoint, "", options)
+		err = mounter.Mount(source, mountPoint, "", flags)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}

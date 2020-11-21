@@ -16,101 +16,44 @@ package driverd
 
 import (
 	"context"
-	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/status"
-	"k8s.io/klog"
 	"net"
-	"strings"
 	"time"
+
+	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
+	"k8s.io/klog"
 )
 
 type LvmCtrldClientConnection struct {
+	pb.LvmCtrldClient
 	conn *grpc.ClientConn
-	proto.LvmCtrldClient
 }
 
-type LvmCtrldClientFactory interface {
-	NewLocal() (*LvmCtrldClientConnection, error)
-	NewRemote(address string) (*LvmCtrldClientConnection, error)
-	NewForVolume(volumeId string, ctx context.Context) (*LvmCtrldClientConnection, error)
-}
-
-type concreteLvmCtrldClientFactory struct {
-	lvmAddr string
-	timeout time.Duration
-}
-
-func NewLvmCtrldClientFactory(lvmAddr string, timeout time.Duration) (LvmCtrldClientFactory, error) {
-	return &concreteLvmCtrldClientFactory{
-		lvmAddr: lvmAddr,
-		timeout: timeout,
-	}, nil
-}
-
-func (f *concreteLvmCtrldClientFactory) NewForVolume(volumeId string, ctx context.Context) (*LvmCtrldClientConnection, error) {
-	// Connect to local lvmctrld
-	client, err := f.NewLocal()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
-	}
-	defer client.Close()
-
-	// Retrieve locking node if any
-	lv, err := client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role!=snapshot",
-		Target: volumeId,
-	})
-	if err != nil && status.Code(err) != codes.NotFound || lv != nil && len(lv.Lvs) > 1 {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes")
-	}
-	ownerAddr := ""
-	if lv != nil && len(lv.Lvs) == 1 {
-		for _, tag := range lv.Lvs[0].LvTags {
-			decodedTag, _ := decodeTag(tag)
-			if strings.HasPrefix(decodedTag, ownerTag) {
-				if len(ownerAddr) > 0 {
-					return nil, status.Errorf(codes.Internal, "volume %s has multiple owners", volumeId)
-				}
-				i := strings.Index(decodedTag, "@")
-				if i == -1 || i == len(decodedTag)-1 {
-					return nil, status.Errorf(codes.Internal, "volume %s has an invalid tag", volumeId)
-				}
-				ownerAddr = decodedTag[i+1:]
-			}
-		}
-	}
-
-	// If there is no owner return a local lvmctrld client, else connect to the remote one
-	if len(ownerAddr) == 0 {
-		client, err := f.NewLocal()
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
-		}
-		return client, nil
-	}
-	rclient, err := f.NewRemote(ownerAddr)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld at %s: %s", ownerAddr, err.Error())
-	}
-	return rclient, nil
-}
-
-func (f *concreteLvmCtrldClientFactory) NewLocal() (*LvmCtrldClientConnection, error) {
-	return f.NewRemote(f.lvmAddr)
-}
-
-func (f *concreteLvmCtrldClientFactory) NewRemote(address string) (*LvmCtrldClientConnection, error) {
-	conn, err := connect(address, f.timeout)
+func NewLvmCtrldClient(address string) (*LvmCtrldClientConnection, error) {
+	conn, err := connect(address, 5*time.Minute)
 	if err != nil {
 		return nil, err
 	}
 	return &LvmCtrldClientConnection{
-		LvmCtrldClient: proto.NewLvmCtrldClient(conn),
+		LvmCtrldClient: pb.NewLvmCtrldClient(conn),
 		conn:           conn,
 	}, nil
+}
+
+func (c *LvmCtrldClientConnection) Wait() error { // FIXME: add a timeout here!
+	for {
+		vgs, err := c.Vgs(context.Background(), &pb.VgsRequest{})
+		if err != nil {
+			klog.Infof("Failed to connect to lvmctrld (%s), retrying...", err.Error())
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		klog.Infof("lvmctrld startup complete, found %d volume group(s)", len(vgs.Vgs))
+		break
+	}
+	klog.Infof("Connected to lvmctrld")
+	return nil
 }
 
 func (c *LvmCtrldClientConnection) Close() error {

@@ -39,44 +39,49 @@ func main() {
 	flag.Parse()
 	klog.Infof("Starting lvmctrld %s (%s)", version, commit)
 
-	// Parse host id
-	if *hostId != "" || *hostAddr != "" {
-		id, err := parseHostId(*hostId, *hostAddr)
-		if err != nil {
-			klog.Errorf("Failed to parse host id: %s", err.Error())
-			os.Exit(1)
-		}
-		if err := lvmctrld.StartLock(id, []string{}); err != nil {
-			klog.Errorf("Failed to start lock: %s", err.Error())
-			os.Exit(2)
-		}
-	}
-
-	// Start server
-	listener, err := lvmctrld.NewListener(*listen)
+	listener, err := bootstrap()
 	if err != nil {
-		klog.Errorf("Failed to instance listener: %s", err.Error())
-		os.Exit(1)
-	}
-	if err = listener.Init(); err != nil {
-		klog.Errorf("Failed to initialize listener: %s", err.Error())
-		os.Exit(1)
+		klog.Errorf("Bootstrap failed: %v", err)
+		os.Exit(2)
 	}
 	if err = listener.Run(); err != nil {
-		klog.Errorf("Failed to run listener: %s", err.Error())
-		os.Exit(1)
+		klog.Errorf("Execution failed: %v", err)
+		os.Exit(3)
 	}
 	os.Exit(0)
 }
 
+func bootstrap() (*lvmctrld.Listener, error) {
+	// Parse host id
+	var id uint16
+	var err error
+	if *hostId != "" || *hostAddr != "" {
+		id, err = parseHostId(*hostId, *hostAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse host id: %v", err)
+		}
+		if err := lvmctrld.StartLock(id, []string{}); err != nil {
+			return nil, fmt.Errorf("failed to start lock: %v", err)
+		}
+	}
+
+	// Start server
+	listener, err := lvmctrld.NewListener(*listen, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance listener: %v", err)
+	}
+	if err = listener.Init(); err != nil {
+		return nil, fmt.Errorf("failed to initialize listener: %v", err)
+	}
+	return listener, nil
+}
+
 func parseHostId(hostId string, hostAddr string) (uint16, error) {
 	if hostId != "" && hostAddr != "" {
-		klog.Errorf("Host id and node ip are mutually exclusive")
-		os.Exit(1)
+		return 0, fmt.Errorf("host id and node ip are mutually exclusive")
 	}
 	if hostId == "" && hostAddr == "" {
-		klog.Errorf("Host id or node ip required")
-		os.Exit(1)
+		return 0, fmt.Errorf("host id or node ip required")
 	}
 
 	if hostId != "" {

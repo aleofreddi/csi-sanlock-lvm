@@ -14,7 +14,9 @@
 
 package driverd
 
-import "testing"
+import (
+	"testing"
+)
 
 func Test_encodeTag(t *testing.T) {
 	type args struct {
@@ -25,8 +27,9 @@ func Test_encodeTag(t *testing.T) {
 		args args
 		want string
 	}{
-		{"Unquoted characters", args{"unquoted.chars=01234456789"}, "unquoted.chars=01234456789"},
-		{"Quoted characters", args{"quoted.chars= +-{}$`"}, "quoted.chars=&20&2b&2d&7b&7d&24&60"},
+		{"Unquoted characters", args{"unquoted.chars=01234456789_+.-/=!:#"}, "unquoted.chars=01234456789_+.-/=!:#"},
+		{"Quoted characters", args{"quoted_chars= {}$`"}, "quoted_chars=&20&7b&7d&24&60"},
+		{"Quote hyphen only when is the first character", args{"-_should_be_quoted._while_-_not"}, "&2d_should_be_quoted._while_-_not"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,6 +53,8 @@ func Test_decodeTag(t *testing.T) {
 		{"Unquoted characters", args{"unquoted.chars=01234456789"}, "unquoted.chars=01234456789", false},
 		{"Quoted characters", args{"quoted.chars=&20&2b&2d&7b&7d&24&60"}, "quoted.chars= +-{}$`", false},
 		{"Invalid characters", args{"invalid +"}, "", true},
+		{"Decode quoted and unquoted hyphen", args{"&2d-&2d"}, "---", false},
+		{"Reject unquoted initial hyphen", args{"--"}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

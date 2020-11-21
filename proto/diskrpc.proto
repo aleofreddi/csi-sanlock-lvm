@@ -12,28 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package lvmctrld
+syntax = "proto3";
 
-import (
-	"bytes"
-	"os/exec"
-)
+import "google/protobuf/timestamp.proto";
 
-type commander interface {
-	Exec(exe string, args ...string) (code int, stdout, stderr []byte, err error)
+option go_package = "github.com/aleofreddi/csi-sanlock-lvm/proto";
+
+enum DiskRpcType {
+  DISK_RPC_PAYLOAD_EMPTY = 0;
+  DISK_RPC_PAYLOAD_BUSY = 1;
+  DISK_RPC_PAYLOAD_REQUEST = 2;
+  DISK_RPC_PAYLOAD_RESPONSE = 3;
 }
 
-type osCommander struct{}
+message DiskRpcMessage {
+  google.protobuf.Timestamp time = 1;
 
-func (osCommander) Exec(exe string, args ...string) (code int, stdout, stderr []byte, err error) {
-	proc := exec.Command(exe, args...)
-	stdoutBuf, stderrBuf := new(bytes.Buffer), new(bytes.Buffer)
-	proc.Stdout = stdoutBuf
-	proc.Stderr = stderrBuf
-	err = proc.Run()
-	return proc.ProcessState.ExitCode(), stdoutBuf.Bytes(), stderrBuf.Bytes(), err
+  string method = 2;
+  bytes request = 3;
+  bytes response = 4;
+  string error_msg = 5;
+  uint32 error_code = 6;
 }
 
-func NewCommander() commander {
-	return osCommander{}
-}

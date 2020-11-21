@@ -15,27 +15,48 @@
 package lvmctrld
 
 import (
+	"bytes"
 	"fmt"
-	"k8s.io/klog"
 	"os/exec"
 	"time"
+
+	"k8s.io/klog"
 )
 
-func StartLock(hostId uint16, volumeGroups []string) error {
+func vgLock() error {
+	vgchange := exec.Command("vgchange", "--lockstart", "--verbose")
+	stdoutBuf, stderrBuf := new(bytes.Buffer), new(bytes.Buffer)
+	vgchange.Stdout = stdoutBuf
+	vgchange.Stderr = stderrBuf
+	err := vgchange.Run()
+	if err != nil {
+	}
+	return err
+}
+
+func StartLock(id uint16, volumeGroups []string) error {
 	if err := daemonize("wdmd", "-D"); err != nil {
 		return err
 	}
 	if err := daemonize("sanlock", "daemon", "-D"); err != nil {
 		return err
 	}
-	if err := daemonize("lvmlockd", "--host-id", fmt.Sprintf("%d", hostId), "-f"); err != nil {
+	if err := daemonize("lvmlockd", "--host-id", fmt.Sprintf("%d", id), "-f"); err != nil {
 		return err
 	}
 	time.Sleep(1 * time.Second)
-	klog.Infof("Starting global lock for volume groups %s (can take up to 3 minutes)", volumeGroups)
-	vgchange := exec.Command("vgchange", "--lockstart")
+	klog.Infof("Starting global lock (can take up to 3 minutes)")
+	vgchange := exec.Command("vgchange", "--lockstart", "--verbose")
 	if err := vgchange.Run(); err != nil {
-		return fmt.Errorf("failed to start lock: %s", err.Error())
+		// On Ubuntu 20 LTS, with LVM 2.03.07(2) (2019-11-30), I've encountered a bug where
+		// the first lockstart fails with error code 5, and a second one succeeds.
+		//
+		// So we wait 1 second and retry.
+		time.Sleep(1 * time.Second)
+		vgchange = exec.Command("vgchange", "--lockstart", "--verbose")
+		if err = vgchange.Run(); err != nil {
+			return fmt.Errorf("failed to start global lock: %v", err)
+		}
 	}
 	klog.Info("Global lock started")
 	return nil

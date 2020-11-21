@@ -4,7 +4,7 @@ include ../common.mk
 
 # :.!find pkg cmd -type f -name \*go -a \! -name \*_test.go | sort -u | tr \\n ' '
 SRC=\
-cmd/main.go pkg/controllerserver.go pkg/fs.go pkg/identityserver.go pkg/init.go pkg/listener.go pkg/lvmctrldclient.go pkg/nodeserver.go pkg/tagencoder.go pkg/tags.go 
+cmd/main.go pkg/baseserver.go pkg/controllerserver.go pkg/diskrpc.go pkg/filesystem.go pkg/identityserver.go pkg/listener.go pkg/lvmctrldclient.go pkg/nodeserver.go pkg/tagencoder.go pkg/tags.go pkg/volumeinfo.go pkg/volumelock.go pkg/volumeref.go
 
 # :.!find . -type f -name \*_test.go | sort -u | tr \\n ' '
 TEST=\

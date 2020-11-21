@@ -19,13 +19,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
-	"github.com/golang/protobuf/ptypes"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"regexp"
 	"strings"
 	"time"
+
+	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
+	"github.com/golang/protobuf/ptypes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Credits to dave at https://stackoverflow.com/questions/40939261/golang-parse-strange-date-format
@@ -58,6 +59,7 @@ type lvmReportLvs struct {
 	LvTags          string  `json:"lv_tags"`
 	LvRole          string  `json:"lv_role"`
 	LvTime          lvmTime `json:"lv_time,string"`
+	LvDeviceOpen    string  `json:"lv_device_open"`
 }
 
 type lvmReportVgs struct {
@@ -98,16 +100,24 @@ var (
 )
 
 type lvmctrldServer struct {
-	cmd commander
+	id  uint16
+	cmd runner
 }
 
-func NewLvmctrldServer() *lvmctrldServer {
+func NewLvmctrldServer(id uint16) *lvmctrldServer {
 	return &lvmctrldServer{
+		id,
 		NewCommander(),
 	}
 }
 
-func (s lvmctrldServer) Vgs(_ context.Context, req *proto.VgsRequest) (*proto.VgsResponse, error) {
+func (s lvmctrldServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) (*pb.GetStatusResponse, error) {
+	return &pb.GetStatusResponse{
+		NodeId: uint32(s.id),
+	}, nil
+}
+
+func (s lvmctrldServer) Vgs(_ context.Context, req *pb.VgsRequest) (*pb.VgsResponse, error) {
 	args := []string{
 		"--options", "vg_name,pv_count,lv_count,snap_count,vg_attr,vg_size,vg_free,vg_tags",
 		"--units", "b",
@@ -117,8 +127,8 @@ func (s lvmctrldServer) Vgs(_ context.Context, req *proto.VgsRequest) (*proto.Vg
 	if req.GetSelect() != "" {
 		args = append(args, "-S", req.GetSelect())
 	}
-	if req.Target != "" {
-		args = append(args, req.Target)
+	if len(req.Target) > 0 {
+		args = append(args, req.Target...)
 	}
 	out, err := runReport(s.cmd, "vgs", args...)
 	if err != nil {
@@ -127,16 +137,16 @@ func (s lvmctrldServer) Vgs(_ context.Context, req *proto.VgsRequest) (*proto.Vg
 	if len(out.Report) != 1 {
 		return nil, errors.New("unexpected multiple reports")
 	}
-	vgs := make([]*proto.VolumeGroup, len(out.Report[0].Vgs))
+	vgs := make([]*pb.VolumeGroup, len(out.Report[0].Vgs))
 	for i, v := range out.Report[0].Vgs {
 		vgs[i] = lvmToVolumeGroup(&v)
 	}
-	return &proto.VgsResponse{
+	return &pb.VgsResponse{
 		Vgs: vgs,
 	}, nil
 }
 
-func (s lvmctrldServer) LvCreate(_ context.Context, req *proto.LvCreateRequest) (*proto.LvCreateResponse, error) {
+func (s lvmctrldServer) LvCreate(_ context.Context, req *pb.LvCreateRequest) (*pb.LvCreateResponse, error) {
 	args := []string{
 		"-y",
 		"-L", fmt.Sprintf("%db", req.Size),
@@ -156,28 +166,29 @@ func (s lvmctrldServer) LvCreate(_ context.Context, req *proto.LvCreateRequest) 
 	if code != 0 || err != nil {
 		return nil, parseLvmError(code, stdout, stderr)
 	}
-	return &proto.LvCreateResponse{}, nil
+	return &pb.LvCreateResponse{}, nil
 }
 
-func (s lvmctrldServer) LvRemove(_ context.Context, req *proto.LvRemoveRequest) (*proto.LvRemoveResponse, error) {
+func (s lvmctrldServer) LvRemove(_ context.Context, req *pb.LvRemoveRequest) (*pb.LvRemoveResponse, error) {
 	args := []string{
 		"-f",
 	}
 	if req.GetSelect() != "" {
 		args = append(args, "-S", req.GetSelect())
 	}
-	args = append(args, fmt.Sprintf("%s/%s", req.VgName, req.LvName))
-
+	if len(req.Target) > 0 {
+		args = append(args, req.Target...)
+	}
 	code, stdout, stderr, err := s.cmd.Exec("lvremove", args...)
 	if code != 0 || err != nil {
 		return nil, parseLvmError(code, stdout, stderr)
 	}
-	return &proto.LvRemoveResponse{}, nil
+	return &pb.LvRemoveResponse{}, nil
 }
 
-func (s lvmctrldServer) Lvs(_ context.Context, req *proto.LvsRequest) (*proto.LvsResponse, error) {
+func (s lvmctrldServer) Lvs(_ context.Context, req *pb.LvsRequest) (*pb.LvsResponse, error) {
 	args := []string{
-		"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time",
+		"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time,lv_device_open",
 		"--units", "b",
 		"--nosuffix",
 		"--reportformat", "json",
@@ -188,8 +199,8 @@ func (s lvmctrldServer) Lvs(_ context.Context, req *proto.LvsRequest) (*proto.Lv
 	if len(req.Sort) > 0 {
 		args = append(args, "-O", strings.Join(req.Sort, ","))
 	}
-	if req.Target != "" {
-		args = append(args, req.Target)
+	if len(req.Target) > 0 {
+		args = append(args, req.Target...)
 	}
 	out, err := runReport(s.cmd, "lvs", args...)
 	if err != nil {
@@ -198,16 +209,16 @@ func (s lvmctrldServer) Lvs(_ context.Context, req *proto.LvsRequest) (*proto.Lv
 	if len(out.Report) != 1 {
 		return nil, errors.New("unexpected multiple reports")
 	}
-	lvs := make([]*proto.LogicalVolume, len(out.Report[0].Lvs))
+	lvs := make([]*pb.LogicalVolume, len(out.Report[0].Lvs))
 	for i, v := range out.Report[0].Lvs {
 		lvs[i] = lvmToLogicalVolume(&v)
 	}
-	return &proto.LvsResponse{
+	return &pb.LvsResponse{
 		Lvs: lvs,
 	}, nil
 }
 
-func (s lvmctrldServer) LvResize(ctx context.Context, req *proto.LvResizeRequest) (*proto.LvResizeResponse, error) {
+func (s lvmctrldServer) LvResize(ctx context.Context, req *pb.LvResizeRequest) (*pb.LvResizeResponse, error) {
 	args := []string{
 		"-f",
 		"-L", fmt.Sprintf("%db", req.Size),
@@ -217,10 +228,10 @@ func (s lvmctrldServer) LvResize(ctx context.Context, req *proto.LvResizeRequest
 	if code != 0 || err != nil {
 		return nil, parseLvmError(code, stdout, stderr)
 	}
-	return &proto.LvResizeResponse{}, nil
+	return &pb.LvResizeResponse{}, nil
 }
 
-func (s lvmctrldServer) LvChange(ctx context.Context, req *proto.LvChangeRequest) (*proto.LvChangeResponse, error) {
+func (s lvmctrldServer) LvChange(ctx context.Context, req *pb.LvChangeRequest) (*pb.LvChangeResponse, error) {
 	args := make([]string, 0)
 	args = lvmToActivationMode(args, req.GetActivate())
 	for _, tag := range req.AddTag {
@@ -232,15 +243,17 @@ func (s lvmctrldServer) LvChange(ctx context.Context, req *proto.LvChangeRequest
 	if req.GetSelect() != "" {
 		args = append(args, "-S", req.GetSelect())
 	}
-	args = append(args, req.GetTarget())
+	if len(req.GetTarget()) > 0 {
+		args = append(args, req.GetTarget()...)
+	}
 	code, stdout, stderr, err := s.cmd.Exec("lvchange", args...)
 	if code != 0 || err != nil {
 		return nil, parseLvmError(code, stdout, stderr)
 	}
-	return &proto.LvChangeResponse{}, nil
+	return &pb.LvChangeResponse{}, nil
 }
 
-func runReport(cmd commander, exe string, args ...string) (*lvmReport, error) {
+func runReport(cmd runner, exe string, args ...string) (*lvmReport, error) {
 	code, stdout, stderr, err := cmd.Exec(exe, args...)
 	if code != 0 || err != nil {
 		return nil, parseLvmError(code, stdout, stderr)
@@ -252,24 +265,24 @@ func runReport(cmd commander, exe string, args ...string) (*lvmReport, error) {
 	return &result, nil
 }
 
-func lvmToActivationMode(args []string, activationMode proto.LvActivationMode) []string {
-	if activationMode == proto.LvActivationMode_NONE {
+func lvmToActivationMode(args []string, activationMode pb.LvActivationMode) []string {
+	if activationMode == pb.LvActivationMode_LV_ACTIVATION_MODE_NONE {
 		return args
 	}
 	switch activationMode {
-	case proto.LvActivationMode_ACTIVE_EXCLUSIVE:
+	case pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE:
 		return append(args, "-a", "ey")
-	case proto.LvActivationMode_ACTIVE_SHARED:
+	case pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_SHARED:
 		return append(args, "-a", "sy")
-	case proto.LvActivationMode_DEACTIVATE:
+	case pb.LvActivationMode_LV_ACTIVATION_MODE_DEACTIVATE:
 		return append(args, "-a", "n")
 	default:
 		panic(fmt.Sprintf("unknown activation mode %d", activationMode))
 	}
 }
 
-func lvmToVolumeGroup(vg *lvmReportVgs) *proto.VolumeGroup {
-	return &proto.VolumeGroup{
+func lvmToVolumeGroup(vg *lvmReportVgs) *pb.VolumeGroup {
+	return &pb.VolumeGroup{
 		VgName:    vg.VgName,
 		PvCount:   vg.PvCount,
 		LvCount:   vg.LvCount,
@@ -281,9 +294,9 @@ func lvmToVolumeGroup(vg *lvmReportVgs) *proto.VolumeGroup {
 	}
 }
 
-func lvmToLogicalVolume(lv *lvmReportLvs) *proto.LogicalVolume {
+func lvmToLogicalVolume(lv *lvmReportLvs) *pb.LogicalVolume {
 	lvTime, _ := ptypes.TimestampProto(lv.LvTime.Time)
-	return &proto.LogicalVolume{
+	return &pb.LogicalVolume{
 		LvName:          lv.LvName,
 		VgName:          lv.VgName,
 		LvAttr:          lv.LvAttr,
@@ -299,7 +312,15 @@ func lvmToLogicalVolume(lv *lvmReportLvs) *proto.LogicalVolume {
 		LvTags:          splitLvmField(lv.LvTags),
 		LvRole:          splitLvmField(lv.LvRole),
 		LvTime:          lvTime,
+		LvDeviceOpen:    decodeLvDeviceOpen(lv.LvDeviceOpen),
 	}
+}
+
+func decodeLvDeviceOpen(value string) pb.LvDeviceOpen {
+	if value == "open" {
+		return pb.LvDeviceOpen_LV_DEVICE_OPEN_OPEN
+	}
+	return pb.LvDeviceOpen_LV_DEVICE_OPEN_UNKNOWN
 }
 
 func splitLvmField(value string) []string {

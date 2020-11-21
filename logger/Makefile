@@ -4,21 +4,17 @@ include ../common.mk
 
 # :.!find pkg cmd -type f -name \*go -a \! -name \*_test.go | sort -u | tr \\n ' '
 SRC=\
-cmd/main.go pkg/runner.go pkg/listener.go pkg/lock.go pkg/lvmctrldserver.go
+pkg/grpclogger.go
 
 # :.!find . -type f -name \*_test.go | sort -u | tr \\n ' '
 TEST=\
-./pkg/fakerunner_test.go ./pkg/lvmctrldserver_test.go
 
-PROTO=../proto/lvmctrld.pb.go
-
-MOCK=
 
 VPATH=./pkg
 
 all: build test
 
-build: bin/lvmctrld
+build:
 
 clean:
 	$(RM) -r go.dep coverage.txt ./bin ./mock/*.m[ie].go
@@ -34,8 +30,3 @@ bin/lvmctrld: go.dep $(SRC) $(PROTO)
 test: go.dep $(MOCK) $(PROTO) $(SRC) $(TEST)
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd ./pkg
 
-build-image:
-	docker build --build-arg VERSION='$(VERSION)' -t quay.io/aleofreddi/lvmctrld:'$(VERSION)' -f Dockerfile ..
-
-push-image:	build-image
-	docker push quay.io/aleofreddi/lvmctrld:'$(VERSION)'
