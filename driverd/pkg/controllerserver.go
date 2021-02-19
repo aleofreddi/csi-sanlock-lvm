@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	diskrpc "github.com/aleofreddi/csi-sanlock-lvm/diskrpc/pkg"
 	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
@@ -35,17 +36,19 @@ import (
 
 const (
 	// Volume parameter
-	vgParamKey = "volumeGroup"
+	maxSizeParamKey    = "maxSize"
+	maxSizePctParamKey = "maxSizePct"
+	vgParamKey         = "volumeGroup"
 
 	DefaultCapacity = 1 << 20
 
-	// DiskRPC ID
-	controllerServerDiskRPCID = 0
+	// DiskRPC channel.
+	controllerServerDiskRPCID diskrpc.Channel = 0
 )
 
 var (
-	volumeIdRe = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*@[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
-	vgRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	volumeIdRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*@[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	vgRe             = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
 )
 
 type VolumeAccessType int
@@ -64,18 +67,18 @@ var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct
 	csi.ControllerServiceCapability_RPC_EXPAND_VOLUME:          {},
 	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS:         {},
 	csi.ControllerServiceCapability_RPC_LIST_VOLUMES:           {},
-	// Add csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
+	// FIXME: check if it's worth adding csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES
 	// See https://github.com/container-storage-interface/spec/blob/master/spec.md#listvolumes
 }
 
 type controllerServer struct {
 	baseServer
-	volumeLock *volumeLock
-	diskRpc    *diskRpc
+	volumeLock VolumeLocker
+	diskRpc    diskrpc.DiskRpc
 	defaultFs  string
 }
 
-func NewControllerServer(lvmctrld pb.LvmCtrldClient, volumeLock *volumeLock, diskRpc *diskRpc, defaultFs string) (*controllerServer, error) {
+func NewControllerServer(lvmctrld pb.LvmCtrldClient, volumeLock VolumeLocker, diskRpc diskrpc.DiskRpc, defaultFs string) (*controllerServer, error) {
 	bs, err := newBaseServer(lvmctrld)
 	if err != nil {
 		return nil, err
@@ -86,7 +89,9 @@ func NewControllerServer(lvmctrld pb.LvmCtrldClient, volumeLock *volumeLock, dis
 		diskRpc:    diskRpc,
 		defaultFs:  defaultFs,
 	}
-	diskRpc.SetTarget(controllerServerDiskRPCID, cs)
+	if err = diskRpc.Register(controllerServerDiskRPCID, cs); err != nil {
+		return nil, fmt.Errorf("failed to register controller server channel: %v", err)
+	}
 	return cs, nil
 }
 
@@ -325,7 +330,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 				return nil, status.Errorf(codes.AlreadyExists, "volume with the same name but with different size already exist")
 			}
 			return &csi.CreateVolumeResponse{
-				Volume: lvToVolume(&d.LogicalVolume),
+				Volume: lvToVolume(d.LogicalVolume),
 			}, nil
 		}
 		return nil, status.Errorf(codes.Internal, "failed to create volume %s: %v", vol, err)
@@ -417,26 +422,27 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
 
-	// Try to remove the volume. If it's an origin for some snapshot it will be skipped
+	// Try to remove the volume. If it's an origin for some snapshot it will be skipped.
 	_, err = cs.lvmctrld.LvRemove(ctx, &pb.LvRemoveRequest{
 		Select: "lv_role!=origin",
 		Target: []string{vol.VgLv()},
 	})
-	if err != nil && status.Code(err) != codes.NotFound {
+	if status.Code(err) == codes.NotFound {
+		return &csi.DeleteVolumeResponse{}, nil
+	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete volume %s: %v", vol, err)
 	}
 
-	// Check if the volume still exists. It could be that lvremove didn't fail but didn't match the volume either (because it is a snapshot origin)
+	// Check if the volume still exists. It could be that lvremove didn't return
+	// an error but didn't match the volume (because it is a snapshot origin).
+	_, err = cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
+		Target: []string{vol.VgLv()},
+	})
 	if err == nil {
-		_, err = cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
-			Target: []string{vol.VgLv()},
-		})
-		if err == nil {
-			return nil, status.Error(codes.FailedPrecondition, "failed to delete volume because of dependant snapshot")
-		}
-		if status.Code(err) != codes.NotFound {
-			return nil, status.Errorf(codes.Internal, "failed to list volume %s: %v", vol, err)
-		}
+		return nil, status.Error(codes.FailedPrecondition, "failed to delete volume because of dependant snapshot")
+	}
+	if status.Code(err) != codes.NotFound {
+		return nil, status.Errorf(codes.Internal, "failed to list volume %s: %v", vol, err)
 	}
 	return &csi.DeleteVolumeResponse{}, nil
 }
@@ -459,23 +465,53 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
 
-	volume, err := cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
-		Target: []string{vol.VgLv()},
-	})
+	// Retrieve volume details.
+	d, err := cs.fetch(ctx, vol)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found", req.GetVolumeId()))
+		return nil, err
+	}
+	tags, err := d.Tags()
+	if err != nil {
+		return nil, err
+	}
+	// Validate capabilities.
+	valid := true
+	var validCaps []*csi.VolumeCapability
+	for _, cpb := range req.GetVolumeCapabilities() {
+		validCap := &csi.VolumeCapability{}
+		if cpb.GetAccessMode() != nil {
+			accessMode := cpb.GetAccessMode().GetMode()
+			valid = valid &&
+					(accessMode == csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER ||
+							accessMode == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY)
+			validCap.AccessMode = &csi.VolumeCapability_AccessMode{
+				Mode: accessMode,
+			}
+		}
+		if m := cpb.GetMount(); m != nil {
+			valid = valid && tags[fsTagKey] == m.GetFsType()
+			validCap.AccessType = &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{
+					FsType: tags[fsTagKey],
+				},
+			}
+		} else if cpb.GetBlock() != nil {
+			valid = valid && tags[fsTagKey] == BlockAccessFsName
+			validCap.AccessType = &csi.VolumeCapability_Block{
+				Block: &csi.VolumeCapability_BlockVolume{
+				},
+			}
+		}
+		validCaps = append(validCaps, validCap)
 	}
 
-	//for _, cap := range req.GetVolumeCapabilities() {
-	// FIXME - to implement!
-	//}
-	klog.Infof("TO IMPLEMENT %s", volume)
-
+	if !valid {
+		return &csi.ValidateVolumeCapabilitiesResponse{
+		}, nil
+	}
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
-			VolumeContext:      req.GetVolumeContext(),
-			VolumeCapabilities: req.GetVolumeCapabilities(),
-			Parameters:         req.GetParameters(),
+			VolumeCapabilities: validCaps,
 		},
 	}, nil
 }
@@ -588,7 +624,7 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	// Set next page token if any
 	next := ""
 	if s < len(lvs) {
-		vol := NewVolumeDetailsFromLv(*lvs[s])
+		vol := NewVolumeInfoFromLv(lvs[s])
 		next = vol.ID()
 	}
 
@@ -599,7 +635,7 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 }
 
 func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	// Check arguments
+	// Check arguments.
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing snapshot name")
 	}
@@ -607,7 +643,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		return nil, status.Error(codes.InvalidArgument, "invalid source volume id")
 	}
 
-	// Retrieve origin and snapshot volumes
+	// Retrieve origin and snapshot volumes.
 	orig, err := NewVolumeRefFromID(req.GetSourceVolumeId())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid source volume: %v", err)
@@ -633,13 +669,40 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	}
 	defer cs.tryVolumeUnlock(ctx, *orig, lockId)
 
-	// Create snapshot
+	// Retrieve origin information.
+	origInfo, err := cs.fetch(ctx, orig)
+	if err != nil {
+		return nil, err
+	}
+	size := origInfo.LvSize
+	if value, present := req.Parameters[maxSizePctParamKey]; present {
+		maxPctSize, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid %s parameter %q: %v", maxSizePctParamKey, value, err)
+		}
+		if maxPctSize == 0 || maxPctSize > 1 {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid %s parameter %q: expected a value in range (0, 1]", maxSizePctParamKey, value)
+		}
+		size = math.MinUint64(size, uint64(float64(origInfo.LvSize)*maxPctSize))
+	}
+	if value, present := req.Parameters[maxSizeParamKey]; present {
+		maxSize, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid %s parameter %q: %v", maxSizeParamKey, value, err)
+		}
+		if maxSize == 0 {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid %s parameter %q: expected a positive value", maxSizeParamKey, value)
+		}
+		size = math.MinUint64(size, maxSize)
+	}
+
+	// Create snapshot.
 	_, err = cs.lvmctrld.LvCreate(
 		ctx,
 		&pb.LvCreateRequest{
 			VgName: snap.Vg(),
 			LvName: snap.Lv(),
-			Size:   uint64(20 * (1 << 20)), // FIXME
+			Size:   size,
 			Origin: orig.Lv(),
 			LvTags: encodeTags(map[TagKey]string{
 				nameTagKey:   req.GetName(),
@@ -648,7 +711,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		},
 	)
 	if err != nil && status.Code(err) != codes.AlreadyExists {
-		// Creation failed with a code != AlreadyExists
+		// Creation failed with a code != AlreadyExists.
 		return nil, err
 	}
 
@@ -663,7 +726,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	if d.Origin != orig.Lv() {
 		return nil, status.Errorf(codes.AlreadyExists, "snapshot with the same name %q but different origin already exist", req.GetName())
 	}
-	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(&d.LogicalVolume)}, nil
+	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(d.LogicalVolume)}, nil
 }
 
 func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
@@ -682,12 +745,19 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
 	snap, err := cs.fetch(ctx, snapRef)
-	if err != nil {
+	if status.Code(err) == codes.NotFound {
+		// Snapshot not found: return success.
+		return &csi.DeleteSnapshotResponse{}, nil
+	} else if err != nil {
 		return nil, err
 	}
 	orig := snap.OriginRef()
 	lockVol, err := cs.fetch(ctx, orig)
-	if err != nil {
+	if status.Code(err) == codes.NotFound {
+		// Snapshot origin not found: return success - if origin disappeared, it is
+		// safe to assume that its dependent snapshot got removed.
+		return &csi.DeleteSnapshotResponse{}, nil
+	} else if err != nil {
 		return nil, err
 	}
 	klog.V(3).Infof("Resolved origin for %s to %s", snap, lockVol)
@@ -711,7 +781,7 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	}
 	defer cs.tryVolumeUnlock(ctx, lockVol.VolumeRef, lockId)
 
-	// Remove snapshot
+	// Remove snapshot.
 	_, err = cs.lvmctrld.LvRemove(ctx, &pb.LvRemoveRequest{
 		Target: []string{snap.VgLv()},
 	})
@@ -792,7 +862,7 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 	// Set next page token if any
 	next := ""
 	if s < len(lvs) {
-		vol := NewVolumeRefFromLv(*lvs[s])
+		vol := NewVolumeRefFromLv(lvs[s])
 		next = vol.ID()
 	}
 
@@ -817,7 +887,7 @@ func (cs *controllerServer) tryVolumeUnlock(ctx context.Context, vol VolumeRef, 
 }
 
 func lvToVolume(lv *pb.LogicalVolume) *csi.Volume {
-	vol := NewVolumeDetailsFromLv(*lv)
+	vol := NewVolumeInfoFromLv(lv)
 	return &csi.Volume{
 		VolumeId:      vol.ID(),
 		CapacityBytes: int64(lv.LvSize),
@@ -828,7 +898,7 @@ func lvToVolume(lv *pb.LogicalVolume) *csi.Volume {
 }
 
 func lvToSnapshot(lv *pb.LogicalVolume) *csi.Snapshot {
-	snap := NewVolumeDetailsFromLv(*lv)
+	snap := NewVolumeInfoFromLv(lv)
 	orig := snap.OriginRef()
 	return &csi.Snapshot{
 		SnapshotId:     snap.ID(),

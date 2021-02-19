@@ -21,3 +21,4 @@ mock/%.me.go: %.mock go.dep
 
 %.var.yaml: %.var
 	envsubst < $< > $@
+

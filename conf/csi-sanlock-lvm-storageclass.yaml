@@ -17,11 +17,12 @@ kind: StorageClass
 metadata:
   name: csi-sanlock-lvm-storageclass
   annotations:
+    # Use this class as default one.
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi-sanlock-lvm.csi.vleo.net
 parameters:
-  volumeGroup: vg_hdd
-  filesystem: ext4
+  # Default volume group to use.
+  volumeGroup: vg01
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true

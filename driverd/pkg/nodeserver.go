@@ -33,22 +33,22 @@ var nodeCapabilities = map[csi.NodeServiceCapability_RPC_Type]struct{}{
 }
 
 type nodeServer struct {
-	nodeID        uint16
-	lvmctrld      pb.LvmCtrldClient
-	volumeLock    *volumeLock
-	newFileSystem FileSystemFactory
+	nodeID     uint16
+	lvmctrld   pb.LvmCtrldClient
+	volumeLock VolumeLocker
+	fsRegistry FileSystemRegistry
 }
 
-func NewNodeServer(lvmctrld pb.LvmCtrldClient, volumeLock *volumeLock, newFileSystem FileSystemFactory) (*nodeServer, error) {
+func NewNodeServer(lvmctrld pb.LvmCtrldClient, volumeLock VolumeLocker, fsRegistry FileSystemRegistry) (*nodeServer, error) {
 	st, err := lvmctrld.GetStatus(context.Background(), &pb.GetStatusRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve status from lvmctrld: %v", err)
 	}
 	ns := &nodeServer{
-		nodeID:        uint16(st.NodeId),
-		lvmctrld:      lvmctrld,
-		volumeLock:    volumeLock,
-		newFileSystem: newFileSystem,
+		nodeID:     uint16(st.NodeId),
+		lvmctrld:   lvmctrld,
+		volumeLock: volumeLock,
+		fsRegistry: fsRegistry,
 	}
 	return ns, nil
 }
@@ -123,7 +123,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
 	}
-	fs, err := ns.newFileSystem(fsName)
+	fs, err := ns.fsRegistry.GetFileSystem(fsName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
 	}
@@ -176,7 +176,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
 	}
-	fs, err := ns.newFileSystem(fsName)
+	fs, err := ns.fsRegistry.GetFileSystem(fsName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
 	}
@@ -274,7 +274,7 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
 	}
-	fs, err := ns.newFileSystem(fsName)
+	fs, err := ns.fsRegistry.GetFileSystem(fsName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
 	}

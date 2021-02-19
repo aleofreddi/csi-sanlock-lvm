@@ -17,6 +17,5 @@ kind: VolumeSnapshot
 metadata:
   name: test-snap
 spec:
-  volumeSnapshotClassName: csi-sanlock-lvm-snapclass
   source:
     persistentVolumeClaimName: test-pvc

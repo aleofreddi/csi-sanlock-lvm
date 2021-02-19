@@ -53,7 +53,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			args{
 				nil,
 				&proto.LvChangeRequest{
-					Target:   "vg01/lv_test",
+					Target:   []string{"vg01/lv_test"},
 					Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_SHARED,
 				},
 			},
@@ -72,7 +72,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			args{
 				nil,
 				&proto.LvChangeRequest{
-					Target:   "vg01/lv_test",
+					Target:   []string{"vg01/lv_test"},
 					Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
 				},
 			},
@@ -91,7 +91,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			args{
 				nil,
 				&proto.LvChangeRequest{
-					Target:   "vg01/lv_test",
+					Target:   []string{"vg01/lv_test"},
 					Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_DEACTIVATE,
 				},
 			},
@@ -110,7 +110,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			args{
 				nil,
 				&proto.LvChangeRequest{
-					Target:   "vg01/lv_test",
+					Target:   []string{"vg01/lv_test"},
 					Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
 					Select:   "lv_size>0",
 				},
@@ -130,7 +130,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			args{
 				nil,
 				&proto.LvChangeRequest{
-					Target: "vg01/lv_test",
+					Target: []string{"vg01/lv_test"},
 					AddTag: []string{"tag1", "tag2"},
 				},
 			},
@@ -149,7 +149,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			args{
 				nil,
 				&proto.LvChangeRequest{
-					Target: "vg01/lv_test",
+					Target: []string{"vg01/lv_test"},
 					DelTag: []string{"tag1", "tag2"},
 				},
 			},
@@ -168,7 +168,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			args{
 				nil,
 				&proto.LvChangeRequest{
-					Target:   "vg01/lv_test",
+					Target:   []string{"vg01/lv_test"},
 					Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
 				},
 			},
@@ -187,7 +187,7 @@ func Test_lvmctrldServer_LvChange(t *testing.T) {
 			args{
 				nil,
 				&proto.LvChangeRequest{
-					Target:   "vg01/lv_test",
+					Target:   []string{"vg01/lv_test"},
 					Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
 				},
 			},
@@ -390,8 +390,7 @@ func Test_lvmctrldServer_LvRemove(t *testing.T) {
 			args{
 				nil,
 				&proto.LvRemoveRequest{
-					VgName: "vg01",
-					LvName: "lv_test",
+					Target: []string{"vg01/lv_test"},
 					Select: "lv_size>0",
 				},
 			},
@@ -410,8 +409,7 @@ func Test_lvmctrldServer_LvRemove(t *testing.T) {
 			args{
 				nil,
 				&proto.LvRemoveRequest{
-					VgName: "vg01",
-					LvName: "lv_test",
+					Target: []string{"vg01/lv_test"},
 				},
 			},
 			nil,
@@ -429,8 +427,7 @@ func Test_lvmctrldServer_LvRemove(t *testing.T) {
 			args{
 				nil,
 				&proto.LvRemoveRequest{
-					VgName: "vg01",
-					LvName: "lv_test",
+					Target: []string{"vg01/lv_test"},
 				},
 			},
 			nil,
@@ -578,7 +575,7 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			fields{
 				&fakeRunner{
 					t: t,
-					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "-O", "field1,-field2", "vg01"}, 0,
+					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time,lv_device_open", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "-O", "field1,-field2", "vg01"}, 0,
 						`
   {
       "report": [
@@ -596,7 +593,7 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			args{
 				nil,
 				&proto.LvsRequest{
-					Target: "vg01",
+					Target: []string{"vg01"},
 					Select: "field=value",
 					Sort:   []string{"field1", "-field2"},
 				},
@@ -640,13 +637,13 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			fields{
 				&fakeRunner{
 					t:          t,
-					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 5, "", "  Volume group \"vg01\" not found\n  Cannot process volume group vg01", nil}},
+					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time,lv_device_open", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 5, "", "  Volume group \"vg01\" not found\n  Cannot process volume group vg01", nil}},
 				},
 			},
 			args{
 				nil,
 				&proto.LvsRequest{
-					Target: "vg01",
+					Target: []string{"vg01"},
 					Select: "field=value",
 				},
 			},
@@ -659,13 +656,13 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			fields{
 				&fakeRunner{
 					t:          t,
-					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "vg01/lv01"}, 5, "", "  Failed to find logical volume \"vg01/lv01\"", nil}},
+					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time,lv_device_open", "--units", "b", "--nosuffix", "--reportformat", "json", "vg01/lv01"}, 5, "", "  Failed to find logical volume \"vg01/lv01\"", nil}},
 				},
 			},
 			args{
 				nil,
 				&proto.LvsRequest{
-					Target: "vg01/lv01",
+					Target: []string{"vg01/lv01"},
 				},
 			},
 			nil,
@@ -677,12 +674,12 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			fields{
 				&fakeRunner{
 					t:          t,
-					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0, "{\"invalid\": \"json", "", nil}}},
+					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time,lv_device_open", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0, "{\"invalid\": \"json", "", nil}}},
 			},
 			args{
 				nil,
 				&proto.LvsRequest{
-					Target: "vg01",
+					Target: []string{"vg01"},
 					Select: "field=value",
 				},
 			},
@@ -695,12 +692,12 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			fields{
 				&fakeRunner{
 					t:          t,
-					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0, `{ "report": [ {},{} ] }`, "", nil}}},
+					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time,lv_device_open", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0, `{ "report": [ {},{} ] }`, "", nil}}},
 			},
 			args{
 				nil,
 				&proto.LvsRequest{
-					Target: "vg01",
+					Target: []string{"vg01"},
 					Select: "field=value",
 				},
 			},
@@ -713,7 +710,7 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			fields{
 				&fakeRunner{
 					t: t,
-					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0,
+					executions: []fakeCommand{{"lvs", []string{"--options", "lv_name,vg_name,lv_attr,lv_size,pool_lv,origin,data_percent,metadata_percent,move_pv,mirror_log,copy_percent,convert_lv,lv_tags,lv_role,lv_time,lv_device_open", "--units", "b", "--nosuffix", "--reportformat", "json", "-S", "field=value", "vg01"}, 0,
 						`
   {
       "report": [
@@ -729,7 +726,7 @@ func Test_lvmctrldServer_Lvs(t *testing.T) {
 			args{
 				nil,
 				&proto.LvsRequest{
-					Target: "vg01",
+					Target: []string{"vg01"},
 					Select: "field=value",
 				},
 			},
@@ -836,7 +833,7 @@ func Test_lvmctrldServer_Vgs(t *testing.T) {
 			args{
 				nil,
 				&proto.VgsRequest{
-					Target: "vg01",
+					Target: []string{"vg01"},
 					Select: "field=value",
 				},
 			},
@@ -854,7 +851,7 @@ func Test_lvmctrldServer_Vgs(t *testing.T) {
 			args{
 				nil,
 				&proto.VgsRequest{
-					Target: "vg01",
+					Target: []string{"vg01"},
 					Select: "field=value",
 				},
 			},
@@ -872,7 +869,7 @@ func Test_lvmctrldServer_Vgs(t *testing.T) {
 			args{
 				nil,
 				&proto.VgsRequest{
-					Target: "vg01",
+					Target: []string{"vg01"},
 					Select: "field=value",
 				},
 			},

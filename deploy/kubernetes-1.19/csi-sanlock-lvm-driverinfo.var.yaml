@@ -12,9 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: snapshot.storage.k8s.io/v1beta1
-kind: VolumeSnapshotClass
+apiVersion: storage.k8s.io/v1beta1
+kind: CSIDriver
 metadata:
-  name: csi-sanlock-lvm-snapclass
-driver: csi-sanlock-lvm.csi.vleo.net
-deletionPolicy: Delete
+  name: csi-sanlock-lvm.csi.vleo.net
+spec:
+  # Supports persistent and ephemeral inline volumes.
+  volumeLifecycleModes:
+    - Persistent
+    - Ephemeral
+  # To determine at runtime which mode a volume uses, pod info and its
+  # "csi.storage.k8s.io/ephemeral" entry are needed.
+  podInfoOnMount: true

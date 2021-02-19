@@ -18,20 +18,28 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/aleofreddi/csi-sanlock-lvm/proto";
 
+message MailBoxMessage {
+  uint32 next = 1;
+  uint32 sender = 2;
+  uint32 length = 3;
+  bytes payload = 4;
+}
+
 enum DiskRpcType {
-  DISK_RPC_PAYLOAD_EMPTY = 0;
-  DISK_RPC_PAYLOAD_BUSY = 1;
-  DISK_RPC_PAYLOAD_REQUEST = 2;
-  DISK_RPC_PAYLOAD_RESPONSE = 3;
+  DISK_RPC_TYPE_UNKNOWN = 0;
+  DISK_RPC_TYPE_REQUEST = 1;
+  DISK_RPC_TYPE_RESPONSE = 2;
 }
 
 message DiskRpcMessage {
   google.protobuf.Timestamp time = 1;
-
-  string method = 2;
-  bytes request = 3;
-  bytes response = 4;
-  string error_msg = 5;
-  uint32 error_code = 6;
+  DiskRpcType type = 2;
+  uint32 channel = 3;
+  bytes uuid = 4;
+  string method = 5;
+  bytes request = 6;
+  bytes response = 7;
+  string error_msg = 8;
+  uint32 error_code = 9;
 }
 

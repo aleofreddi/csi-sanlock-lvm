@@ -29,6 +29,8 @@ const (
 	ownerIdTagKey   TagKey = "ownerId"
 	ownerNodeTagKey TagKey = "ownerNode"
 	sourceTagKey    TagKey = "src"
+
+	rpcRoleTagKey TagKey = "rpcRole"
 )
 
 type LogVolType string
@@ -60,6 +62,10 @@ func decodeTagKV(encoded string) (TagKey, string, bool, error) {
 
 func encodeTagKV(key TagKey, value string) string {
 	return encodeTag(fmt.Sprintf("%s%s=%s", tagPrefix, key, value))
+}
+
+func encodeTagKeyPrefix(key TagKey) string {
+	return encodeTag(fmt.Sprintf("%s%s=", tagPrefix, key))
 }
 
 func encodeTags(tags map[TagKey]string) []string {

@@ -24,13 +24,13 @@ import (
 )
 
 var (
-	drvName  = flag.String("driver-name", "csi-lvm-sanlock.vleo.net", "driverName of the driver")
-	listen   = flag.String("listen", "unix:///var/run/csi.sock", "listen address")
-	lvmctrld = flag.String("lvmctrld", "unix:///var/run/lvmctrld.sock", "lvmctrld address")
-	nodeName = flag.String("node-name", "", "node name")
+	drvName   = flag.String("driver-name", "csi-lvm-sanlock.vleo.net", "driverName of the driver")
+	listen    = flag.String("listen", "unix:///var/run/csi.sock", "listen address")
+	lvmctrld  = flag.String("lvmctrld", "unix:///var/run/lvmctrld.sock", "lvmctrld address")
+	nodeName  = flag.String("node-name", "", "node name")
 	defaultFs = flag.String("default-fs", "ext4", "default filesystem to use when none is specified")
-	version  string
-	commit   string
+	version   string
+	commit    string
 )
 
 func main() {
@@ -51,18 +51,17 @@ func main() {
 }
 
 func bootstrap() (*driverd.Listener, error) {
-	// Start lvmctrld client
+	// Start lvmctrld client.
 	client, err := driverd.NewLvmCtrldClient(*lvmctrld)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance lvmctrld client: %v", err)
 	}
-
-	// Wait for lvmctrld to be ready
+	// Wait for lvmctrld to be ready.
 	if err := client.Wait(); err != nil {
 		return nil, fmt.Errorf("lvmctrld startup failed: %v", err)
 	}
 
-	// Retrieve hostname
+	// Retrieve hostname.
 	var node string
 	if *nodeName != "" {
 		node = *nodeName
@@ -72,23 +71,26 @@ func bootstrap() (*driverd.Listener, error) {
 			return nil, fmt.Errorf("failed to retrieve hostname: %v", err)
 		}
 	}
-
-	// Start lock
-	vl, err := driverd.NewVolumeLock(client, node)
+	// Start lock.
+	vl, err := driverd.NewVolumeLocker(client, node)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance volume lock: %v", err)
 	}
 	// Start DiskRPC
-	drpc, err := driverd.NewDiskRpc(client)
+	drpc, err := driverd.NewDiskRpcService(client, vl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to instance disk rpc: %v", err)
+		return nil, fmt.Errorf("failed to instance disk rpc service: %v", err)
 	}
-	// Instance servers
+	// Instance servers.
 	is, err := driverd.NewIdentityServer(*drvName, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %v", err)
 	}
-	ns, err := driverd.NewNodeServer(client, vl, driverd.NewFileSystem)
+	fsr, err := driverd.NewFileSystemRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance filesystem registry: %v", err)
+	}
+	ns, err := driverd.NewNodeServer(client, vl, fsr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %v", err)
 	}

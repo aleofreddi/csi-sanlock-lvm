@@ -20,15 +20,15 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strconv"
 
 	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/pkg"
 	"k8s.io/klog"
 )
 
 var (
-	hostAddr = flag.String("lock-with-host-addr", "", "enable locking, compute host id from the given ip address. This options is mutually exclusive with lock-with-host-id")
-	hostId   = flag.String("lock-with-host-id", "", "enable locking, use the given host id. This option is mutually exclusive with lock-with-host-addr")
+	noLock   = flag.Bool("no-lock", false, "disable locking, use the given host id. This option is mutually exclusive with lock-host-addr and lock-host-id")
+	lockAddr = flag.String("lock-host-addr", "", "enable locking, compute host id from the given ip address. This options is mutually exclusive with lock-host-id and no-lock")
+	lockId   = flag.Uint("lock-host-id", 0, "enable locking, use the given host id. This option is mutually exclusive with lock-host-addr and no-lock")
 	listen   = flag.String("listen", "tcp://0.0.0.0:9000", "listen address")
 	version  string
 	commit   string
@@ -52,20 +52,24 @@ func main() {
 }
 
 func bootstrap() (*lvmctrld.Listener, error) {
-	// Parse host id
+	if (*noLock == (*lockId != 0)) == ((*lockId != 0) == (*lockAddr != "")) {
+		return nil, fmt.Errorf("invalid lock configuration, expected one of: no-lock|lock-host-addr|lock-host-id flag")
+	}
+	// Start global lock if needed.
 	var id uint16
 	var err error
-	if *hostId != "" || *hostAddr != "" {
-		id, err = parseHostId(*hostId, *hostAddr)
+	if *noLock {
+		id = 1
+	} else {
+		id, err = parseHostId(*lockId, *lockAddr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse host id: %v", err)
 		}
-		if err := lvmctrld.StartLock(id, []string{}); err != nil {
+		if err = lvmctrld.StartLock(id, []string{}); err != nil {
 			return nil, fmt.Errorf("failed to start lock: %v", err)
 		}
 	}
-
-	// Start server
+	// Start server.
 	listener, err := lvmctrld.NewListener(*listen, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance listener: %v", err)
@@ -76,26 +80,18 @@ func bootstrap() (*lvmctrld.Listener, error) {
 	return listener, nil
 }
 
-func parseHostId(hostId string, hostAddr string) (uint16, error) {
-	if hostId != "" && hostAddr != "" {
-		return 0, fmt.Errorf("host id and node ip are mutually exclusive")
-	}
-	if hostId == "" && hostAddr == "" {
-		return 0, fmt.Errorf("host id or node ip required")
-	}
-
-	if hostId != "" {
-		v, err := strconv.ParseInt(hostId, 10, 16)
-		if err != nil || v < 1 || v > 2000 {
-			return 0, fmt.Errorf("invalid host id %s, expected a decimal in range [1, 2000]", hostId)
+func parseHostId(hostId uint, hostAddr string) (uint16, error) {
+	if hostId != 0 {
+		if hostId > 2000 {
+			return 0, fmt.Errorf("invalid host id %d, expected a value in range [1, 2000]", hostId)
 		}
-		return uint16(v), nil
+		return uint16(hostId), nil
 	}
-	v, err := addressToHostId(hostAddr)
+	id, err := addressToHostId(hostAddr)
 	if err != nil {
-		return 0, fmt.Errorf("invalid address")
+		return 0, fmt.Errorf("invalid address: %v", err)
 	}
-	return v, nil
+	return id, nil
 }
 
 func addressToHostId(ip string) (uint16, error) {

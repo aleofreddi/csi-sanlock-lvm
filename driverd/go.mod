@@ -3,27 +3,26 @@ module github.com/aleofreddi/csi-sanlock-lvm/driverd
 go 1.13
 
 require (
+	github.com/aleofreddi/csi-sanlock-lvm/diskrpc v1.0.0
 	github.com/aleofreddi/csi-sanlock-lvm/logger v1.0.0
 	github.com/aleofreddi/csi-sanlock-lvm/proto v1.0.0
 	github.com/container-storage-interface/spec v1.2.0
-	github.com/golang/mock v1.4.3
-	github.com/golang/protobuf v1.4.0
-	github.com/google/go-cmp v0.4.1
-	github.com/google/uuid v1.1.2
-	github.com/kubernetes-csi/csi-lib-utils v0.3.0
-	github.com/ncw/directio v1.0.5
+	github.com/golang/mock v1.5.0
+	github.com/golang/protobuf v1.4.3 // indirect
+	github.com/google/go-cmp v0.5.0
+	github.com/google/uuid v1.2.0
+	github.com/kubernetes-csi/csi-lib-utils v0.9.1 // indirect
+	github.com/ncw/directio v1.0.5 // indirect
 	github.com/pkg/math v0.0.0-20141027224758-f2ed9e40e245
 	github.com/slok/noglog v0.2.0 // indirect
 	github.com/spf13/afero v1.2.2 // indirect
-	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
-	golang.org/x/sys v0.0.0-20200124204421-9fbb57f87de9 // indirect
-	google.golang.org/genproto v0.0.0-20200128133413-58ce757ed39b // indirect
-	google.golang.org/grpc v1.27.0
-	google.golang.org/protobuf v1.22.0
-	k8s.io/apimachinery v0.17.2 // indirect
+	golang.org/x/net v0.0.0-20200707034311-ab3426394381
+	google.golang.org/grpc v1.29.0
+	google.golang.org/protobuf v1.25.0
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.12.2
-	k8s.io/utils v0.0.0-20181102055113-1bd4f387aa67 // indirect
+	rsc.io/quote/v3 v3.1.0 // indirect
+	sigs.k8s.io/structured-merge-diff v0.0.0-20190525122527-15d366b2352e // indirect
 )
 
 replace google.golang.org/grpc => github.com/grpc/grpc-go v1.27.0
@@ -35,3 +34,5 @@ replace github.com/golang/glog => github.com/slok/noglog v0.2.1-0.20181001030204
 replace github.com/aleofreddi/csi-sanlock-lvm/proto => ../proto
 
 replace github.com/aleofreddi/csi-sanlock-lvm/logger => ../logger
+
+replace github.com/aleofreddi/csi-sanlock-lvm/diskrpc => ../diskrpc

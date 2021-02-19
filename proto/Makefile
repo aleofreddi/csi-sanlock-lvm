@@ -14,4 +14,8 @@ clean:
 go.dep: go.mod $(PROTO)
 	go get -t ./... && touch go.dep
 
-proto: $(PROTO)
+test: build ;
+
+build-image: ;
+
+push-image:	;

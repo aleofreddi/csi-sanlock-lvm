@@ -15,38 +15,30 @@
 package lvmctrld
 
 import (
-	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"time"
 
 	"k8s.io/klog"
 )
 
-func vgLock() error {
-	vgchange := exec.Command("vgchange", "--lockstart", "--verbose")
-	stdoutBuf, stderrBuf := new(bytes.Buffer), new(bytes.Buffer)
-	vgchange.Stdout = stdoutBuf
-	vgchange.Stderr = stderrBuf
-	err := vgchange.Run()
-	if err != nil {
-	}
-	return err
-}
-
 func StartLock(id uint16, volumeGroups []string) error {
-	if err := daemonize("wdmd", "-D"); err != nil {
+	if err := daemonize("wdmd", os.Stdout, os.Stderr, "-D"); err != nil {
 		return err
 	}
-	if err := daemonize("sanlock", "daemon", "-D"); err != nil {
+	if err := daemonize("sanlock", nil, nil, "daemon", "-D"); err != nil {
 		return err
 	}
-	if err := daemonize("lvmlockd", "--host-id", fmt.Sprintf("%d", id), "-f"); err != nil {
+	if err := daemonize("lvmlockd", os.Stdout, os.Stderr, "--host-id", fmt.Sprintf("%d", id), "-f"); err != nil {
 		return err
 	}
 	time.Sleep(1 * time.Second)
 	klog.Infof("Starting global lock (can take up to 3 minutes)")
 	vgchange := exec.Command("vgchange", "--lockstart", "--verbose")
+	vgchange.Stdout = os.Stdout
+	vgchange.Stderr = os.Stderr
 	if err := vgchange.Run(); err != nil {
 		// On Ubuntu 20 LTS, with LVM 2.03.07(2) (2019-11-30), I've encountered a bug where
 		// the first lockstart fails with error code 5, and a second one succeeds.
@@ -54,6 +46,8 @@ func StartLock(id uint16, volumeGroups []string) error {
 		// So we wait 1 second and retry.
 		time.Sleep(1 * time.Second)
 		vgchange = exec.Command("vgchange", "--lockstart", "--verbose")
+		vgchange.Stdout = os.Stdout
+		vgchange.Stderr = os.Stderr
 		if err = vgchange.Run(); err != nil {
 			return fmt.Errorf("failed to start global lock: %v", err)
 		}
@@ -62,9 +56,11 @@ func StartLock(id uint16, volumeGroups []string) error {
 	return nil
 }
 
-func daemonize(executable string, args ...string) error {
+func daemonize(executable string, stdout io.Writer, stderr io.Writer, args ...string) error {
 	klog.Infof("Running %s with args %v", executable, args)
 	cmd := exec.Command(executable, args...)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	err := cmd.Start()
 	if err != nil {
 		return err

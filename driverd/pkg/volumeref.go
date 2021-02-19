@@ -73,7 +73,7 @@ func NewVolumeRefFromID(volumeID string) (*VolumeRef, error) {
 	}, nil
 }
 
-func NewVolumeRefFromLv(lv pb.LogicalVolume) *VolumeRef {
+func NewVolumeRefFromLv(lv *pb.LogicalVolume) *VolumeRef {
 	return &VolumeRef{
 		lv.LvName,
 		lv.VgName,

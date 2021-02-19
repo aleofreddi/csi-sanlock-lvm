@@ -23,10 +23,10 @@ import (
 // A type that holds details of a volume by wrapping a LogicalVolume.
 type VolumeInfo struct {
 	VolumeRef
-	pb.LogicalVolume
+	*pb.LogicalVolume
 }
 
-func NewVolumeDetailsFromLv(lv pb.LogicalVolume) *VolumeInfo {
+func NewVolumeInfoFromLv(lv *pb.LogicalVolume) *VolumeInfo {
 	return &VolumeInfo{
 		VolumeRef{lv.LvName, lv.VgName},
 		lv,

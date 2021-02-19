@@ -13,11 +13,12 @@
 // limitations under the License.
 
 package driverd_test
-/*
+
 import (
 	"reflect"
 	"testing"
 
+	diskrpc "github.com/aleofreddi/csi-sanlock-lvm/diskrpc/pkg"
 	mock "github.com/aleofreddi/csi-sanlock-lvm/driverd/mock"
 	pkg "github.com/aleofreddi/csi-sanlock-lvm/driverd/pkg"
 	"github.com/aleofreddi/csi-sanlock-lvm/proto"
@@ -31,9 +32,10 @@ import (
 
 func Test_controllerServer_ListVolumes(t *testing.T) {
 	type fields struct {
-		nodeId                string
-		lvmctrldAddr          string
-		lvmctrldClientFactory pkg.LvmCtrldClientFactory
+		lvmctrld     proto.LvmCtrldClient
+		volumeLocker pkg.VolumeLocker
+		diskRpc      diskrpc.DiskRpc
+		defaultFs    string
 	}
 	type args struct {
 		ctx context.Context
@@ -51,14 +53,16 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			"Should fail with abort when starting token is invalid",
 			func(controller *gomock.Controller) *fields {
 				client := mock.NewMockLvmCtrldClient(controller)
-				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
 				gomock.InOrder(
-					factory.EXPECT().
-						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_role!=snapshot", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -76,9 +80,10 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 							),
 				)
 				return &fields{
-					nodeId:                "node",
-					lvmctrldAddr:          "addr",
-					lvmctrldClientFactory: factory,
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					defaultFs:    "testfs",
 				}
 			},
 			args{
@@ -96,14 +101,16 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			"Should paginate results when no starting token is provided",
 			func(controller *gomock.Controller) *fields {
 				client := mock.NewMockLvmCtrldClient(controller)
-				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
 				gomock.InOrder(
-					factory.EXPECT().
-						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_role!=snapshot", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -121,9 +128,10 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 							),
 				)
 				return &fields{
-					nodeId:                "node",
-					lvmctrldAddr:          "addr",
-					lvmctrldClientFactory: factory,
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					defaultFs:    "testfs",
 				}
 			},
 			args{
@@ -134,11 +142,11 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			},
 			&csi.ListVolumesResponse{
 				Entries: []*csi.ListVolumesResponse_Entry{
-					{Volume: &csi.Volume{VolumeId: "vg1/lv1"}},
-					{Volume: &csi.Volume{VolumeId: "vg1/lv2"}},
-					{Volume: &csi.Volume{VolumeId: "vg2/lv1"}},
+					{Volume: &csi.Volume{VolumeId: "lv1@vg1"}},
+					{Volume: &csi.Volume{VolumeId: "lv2@vg1"}},
+					{Volume: &csi.Volume{VolumeId: "lv1@vg2"}},
 				},
-				NextToken: "vg2/lv2",
+				NextToken: "lv2@vg2",
 			},
 			false,
 			codes.OK,
@@ -147,14 +155,16 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			"Should paginate results when starting token",
 			func(controller *gomock.Controller) *fields {
 				client := mock.NewMockLvmCtrldClient(controller)
-				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
 				gomock.InOrder(
-					factory.EXPECT().
-						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_role!=snapshot", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -172,25 +182,26 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 							),
 				)
 				return &fields{
-					nodeId:                "node",
-					lvmctrldAddr:          "addr",
-					lvmctrldClientFactory: factory,
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					defaultFs:    "testfs",
 				}
 			},
 			args{
 				context.Background(),
 				&csi.ListVolumesRequest{
-					StartingToken: "vg2/lv3",
+					StartingToken: "lv3@vg2",
 					MaxEntries:    3,
 				},
 			},
 			&csi.ListVolumesResponse{
 				Entries: []*csi.ListVolumesResponse_Entry{
-					{Volume: &csi.Volume{VolumeId: "vg2/lv3"}},
-					{Volume: &csi.Volume{VolumeId: "vg2/lv4"}},
-					{Volume: &csi.Volume{VolumeId: "vg2/lv5"}},
+					{Volume: &csi.Volume{VolumeId: "lv3@vg2"}},
+					{Volume: &csi.Volume{VolumeId: "lv4@vg2"}},
+					{Volume: &csi.Volume{VolumeId: "lv5@vg2"}},
 				},
-				NextToken: "vg2/lv6",
+				NextToken: "lv6@vg2",
 			},
 			false,
 			codes.OK,
@@ -199,14 +210,16 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			"Should paginate results when starting token at last page",
 			func(controller *gomock.Controller) *fields {
 				client := mock.NewMockLvmCtrldClient(controller)
-				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
 				gomock.InOrder(
-					factory.EXPECT().
-						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_role!=snapshot", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -224,22 +237,23 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 							),
 				)
 				return &fields{
-					nodeId:                "node",
-					lvmctrldAddr:          "addr",
-					lvmctrldClientFactory: factory,
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					defaultFs:    "testfs",
 				}
 			},
 			args{
 				context.Background(),
 				&csi.ListVolumesRequest{
-					StartingToken: "vg2/lv5",
+					StartingToken: "lv5@vg2",
 					MaxEntries:    3,
 				},
 			},
 			&csi.ListVolumesResponse{
 				Entries: []*csi.ListVolumesResponse_Entry{
-					{Volume: &csi.Volume{VolumeId: "vg2/lv5"}},
-					{Volume: &csi.Volume{VolumeId: "vg2/lv6"}},
+					{Volume: &csi.Volume{VolumeId: "lv5@vg2"}},
+					{Volume: &csi.Volume{VolumeId: "lv6@vg2"}},
 				},
 			},
 			false,
@@ -251,7 +265,12 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			mockCtrl := gomock.NewController(t)
 			defer mockCtrl.Finish()
 			fields := tt.fields(mockCtrl)
-			ns, _ := pkg.NewControllerServer(fields.nodeId, fields.lvmctrldAddr, fields.lvmctrldClientFactory)
+			ns, _ := pkg.NewControllerServer(
+				fields.lvmctrld,
+				fields.volumeLocker,
+				fields.diskRpc,
+				fields.defaultFs,
+			)
 			got, err := ns.ListVolumes(tt.args.ctx, tt.args.req)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListVolumes() error = %v, wantErr %v", err, tt.wantErr)
@@ -270,9 +289,10 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 
 func Test_controllerServer_ListSnapshots(t *testing.T) {
 	type fields struct {
-		nodeId                string
-		lvmctrldAddr          string
-		lvmctrldClientFactory pkg.LvmCtrldClientFactory
+		lvmctrld     proto.LvmCtrldClient
+		volumeLocker pkg.VolumeLocker
+		diskRpc      diskrpc.DiskRpc
+		defaultFs    string
 	}
 	type args struct {
 		ctx context.Context
@@ -290,14 +310,16 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			"Should fail with abort when starting token is invalid",
 			func(controller *gomock.Controller) *fields {
 				client := mock.NewMockLvmCtrldClient(controller)
-				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
 				gomock.InOrder(
-					factory.EXPECT().
-						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_role=snapshot", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -315,9 +337,10 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 							),
 				)
 				return &fields{
-					nodeId:                "node",
-					lvmctrldAddr:          "addr",
-					lvmctrldClientFactory: factory,
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					defaultFs:    "testfs",
 				}
 			},
 			args{
@@ -335,14 +358,16 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			"Should paginate results when no starting token is provided",
 			func(controller *gomock.Controller) *fields {
 				client := mock.NewMockLvmCtrldClient(controller)
-				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
 				gomock.InOrder(
-					factory.EXPECT().
-						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_role=snapshot", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -360,9 +385,10 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 							),
 				)
 				return &fields{
-					nodeId:                "node",
-					lvmctrldAddr:          "addr",
-					lvmctrldClientFactory: factory,
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					defaultFs:    "testfs",
 				}
 			},
 			args{
@@ -373,11 +399,11 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			},
 			&csi.ListSnapshotsResponse{
 				Entries: []*csi.ListSnapshotsResponse_Entry{
-					{Snapshot: &csi.Snapshot{SnapshotId: "vg1/lv1", SourceVolumeId: "vg1/lv0", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "vg1/lv2", SourceVolumeId: "vg1/lv0", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "vg2/lv1", SourceVolumeId: "vg2/lv0", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "lv1@vg1", SourceVolumeId: "lv0@vg1", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "lv2@vg1", SourceVolumeId: "lv0@vg1", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "lv1@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
 				},
-				NextToken: "vg2/lv2",
+				NextToken: "lv2@vg2",
 			},
 			false,
 			codes.OK,
@@ -386,14 +412,16 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			"Should paginate results when starting token",
 			func(controller *gomock.Controller) *fields {
 				client := mock.NewMockLvmCtrldClient(controller)
-				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
 				gomock.InOrder(
-					factory.EXPECT().
-						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_role=snapshot", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -411,25 +439,26 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 							),
 				)
 				return &fields{
-					nodeId:                "node",
-					lvmctrldAddr:          "addr",
-					lvmctrldClientFactory: factory,
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					defaultFs:    "testfs",
 				}
 			},
 			args{
 				context.Background(),
 				&csi.ListSnapshotsRequest{
-					StartingToken: "vg2/lv3",
+					StartingToken: "lv3@vg2",
 					MaxEntries:    3,
 				},
 			},
 			&csi.ListSnapshotsResponse{
 				Entries: []*csi.ListSnapshotsResponse_Entry{
-					{Snapshot: &csi.Snapshot{SnapshotId: "vg2/lv3", SourceVolumeId: "vg2/lv0", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "vg2/lv4", SourceVolumeId: "vg2/lv0", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "vg2/lv5", SourceVolumeId: "vg2/lv0", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "lv3@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "lv4@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "lv5@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
 				},
-				NextToken: "vg2/lv6",
+				NextToken: "lv6@vg2",
 			},
 			false,
 			codes.OK,
@@ -438,14 +467,16 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			"Should paginate results when starting token at last page",
 			func(controller *gomock.Controller) *fields {
 				client := mock.NewMockLvmCtrldClient(controller)
-				factory := mock.NewMockLvmCtrldClientFactory(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
 				gomock.InOrder(
-					factory.EXPECT().
-						NewLocal().Return(&pkg.LvmCtrldClientConnection{LvmCtrldClient: client}, nil),
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_role=snapshot", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -463,22 +494,23 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 							),
 				)
 				return &fields{
-					nodeId:                "node",
-					lvmctrldAddr:          "addr",
-					lvmctrldClientFactory: factory,
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					defaultFs:    "testfs",
 				}
 			},
 			args{
 				context.Background(),
 				&csi.ListSnapshotsRequest{
-					StartingToken: "vg2/lv5",
+					StartingToken: "lv5@vg2",
 					MaxEntries:    3,
 				},
 			},
 			&csi.ListSnapshotsResponse{
 				Entries: []*csi.ListSnapshotsResponse_Entry{
-					{Snapshot: &csi.Snapshot{SnapshotId: "vg2/lv5", SourceVolumeId: "vg2/lv0", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "vg2/lv6", SourceVolumeId: "vg2/lv0", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "lv5@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "lv6@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
 				},
 			},
 			false,
@@ -490,7 +522,12 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			mockCtrl := gomock.NewController(t)
 			defer mockCtrl.Finish()
 			fields := tt.fields(mockCtrl)
-			ns, _ := pkg.NewControllerServer(fields.nodeId, fields.lvmctrldAddr, fields.lvmctrldClientFactory)
+			ns, _ := pkg.NewControllerServer(
+				fields.lvmctrld,
+				fields.volumeLocker,
+				fields.diskRpc,
+				fields.defaultFs,
+			)
 			got, err := ns.ListSnapshots(tt.args.ctx, tt.args.req)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListSnapshots() error = %v, wantErr %v", err, tt.wantErr)
@@ -506,4 +543,17 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 		})
 	}
 }
-*/
+
+func expectGetStatus(t *testing.T, client *mock.MockLvmCtrldClient) *gomock.Call {
+	return client.EXPECT().
+		GetStatus(gomock.Any(), CmpMatcher(t, &proto.GetStatusRequest{}, protocmp.Transform())).
+			Return(
+				&proto.GetStatusResponse{NodeId: 1234},
+				nil,
+			)
+}
+
+func expectRegisterChannel(t *testing.T, diskRpc *mock.MockDiskRpc) *gomock.Call {
+	return diskRpc.EXPECT().
+		Register(diskrpc.Channel(0), gomock.Any())
+}

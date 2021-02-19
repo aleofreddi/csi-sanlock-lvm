@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"sync"
 
+	diskrpc "github.com/aleofreddi/csi-sanlock-lvm/diskrpc/pkg"
 	"github.com/aleofreddi/csi-sanlock-lvm/proto"
 	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
 	"google.golang.org/grpc/codes"
@@ -26,7 +27,21 @@ import (
 	"k8s.io/klog"
 )
 
-type volumeLock struct {
+type VolumeLocker interface {
+	// Lock the given volume for the given operation.
+	//
+	// Volume locks are reentrant per volume (but not per <volume, op> pairs),
+	// that is one can lock the same volume with multiple ops.
+	LockVolume(ctx context.Context, vol VolumeRef, op string) error
+
+	// Unlock a volume for a given <vol, op> pair.
+	UnlockVolume(ctx context.Context, vol VolumeRef, op string) error
+
+	// Retrieve the owner mailbox and name for a volume, if any.
+	GetOwner(ctx context.Context, ref VolumeRef) (diskrpc.MailBoxID, string, error)
+}
+
+type volumeLocker struct {
 	baseServer
 	nodeName string
 
@@ -38,12 +53,12 @@ const (
 	defaultLockOp = "stage"
 )
 
-func NewVolumeLock(lvmctrld pb.LvmCtrldClient, nodeName string) (*volumeLock, error) {
+func NewVolumeLocker(lvmctrld pb.LvmCtrldClient, nodeName string) (VolumeLocker, error) {
 	bs, err := newBaseServer(lvmctrld)
 	if err != nil {
 		return nil, err
 	}
-	vl := &volumeLock{
+	vl := &volumeLocker{
 		baseServer: *bs,
 		nodeName:   nodeName,
 		locks:      map[string]map[string]struct{}{},
@@ -56,7 +71,7 @@ func NewVolumeLock(lvmctrld pb.LvmCtrldClient, nodeName string) (*volumeLock, er
 	return vl, nil
 }
 
-func (vl *volumeLock) LockVolume(ctx context.Context, vol VolumeRef, op string) error {
+func (vl *volumeLocker) LockVolume(ctx context.Context, vol VolumeRef, op string) error {
 	vl.mutex.Lock()
 	defer vl.mutex.Unlock()
 
@@ -71,7 +86,7 @@ func (vl *volumeLock) LockVolume(ctx context.Context, vol VolumeRef, op string) 
 		return nil
 	}
 
-	// Lock the volume
+	// Lock the volume.
 	_, err := vl.lvmctrld.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   []string{vol.VgLv()},
 		Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
@@ -80,13 +95,13 @@ func (vl *volumeLock) LockVolume(ctx context.Context, vol VolumeRef, op string) 
 		return status.Errorf(status.Code(err), "failed to lock volume %s: %v", vol, err)
 	}
 
-	// Update tags
+	// Update tags.
 	err = vl.setOwner(ctx, vol, &vl.nodeID, &vl.nodeName)
 	if err != nil {
-		// Try to unlock the volume
+		// Try to unlock the volume.
 		_, err2 := vl.lvmctrld.LvChange(ctx, &proto.LvChangeRequest{
 			Target:   []string{vol.VgLv()},
-			Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_NONE,
+			Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_DEACTIVATE,
 		})
 		if err2 != nil {
 			klog.Errorf("Failed to unlock volume %s: %v (ignoring error)", vol, err2)
@@ -98,11 +113,11 @@ func (vl *volumeLock) LockVolume(ctx context.Context, vol VolumeRef, op string) 
 	return nil
 }
 
-func (vl *volumeLock) UnlockVolume(ctx context.Context, vol VolumeRef, op string) error {
+func (vl *volumeLocker) UnlockVolume(ctx context.Context, vol VolumeRef, op string) error {
 	vl.mutex.Lock()
 	defer vl.mutex.Unlock()
 
-	// If volume is not locked, return
+	// If volume is not locked, return.
 	key := vol.VgLv()
 	m, ok := vl.locks[key]
 	if !ok {
@@ -113,13 +128,13 @@ func (vl *volumeLock) UnlockVolume(ctx context.Context, vol VolumeRef, op string
 		return nil
 	}
 
-	// Remove owner tags
+	// Remove owner tags.
 	err := vl.setOwner(ctx, vol, nil, nil)
 	if err != nil {
 		return err
 	}
 
-	// Unlock the volume
+	// Unlock the volume.
 	_, err = vl.lvmctrld.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   []string{vol.VgLv()},
 		Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_DEACTIVATE,
@@ -133,8 +148,8 @@ func (vl *volumeLock) UnlockVolume(ctx context.Context, vol VolumeRef, op string
 }
 
 // Retrieve the owner node for a given volume.
-func (vl *volumeLock) GetOwner(ctx context.Context, ref VolumeRef) (uint16, string, error) {
-	// Fetch the volume and get its tags
+func (vl *volumeLocker) GetOwner(ctx context.Context, ref VolumeRef) (diskrpc.MailBoxID, string, error) {
+	// Fetch the volume and get its tags.
 	vol, err := vl.fetch(ctx, &ref)
 	if err != nil {
 		return 0, "", status.Errorf(codes.Internal, "failed to list logical volume %s: %v", vol, err)
@@ -152,14 +167,14 @@ func (vl *volumeLock) GetOwner(ctx context.Context, ref VolumeRef) (uint16, stri
 		}
 	}
 	nodeName, _ := tags[ownerNodeTagKey]
-	return nodeID, nodeName, nil
+	return diskrpc.MailBoxID(nodeID), nodeName, nil
 }
 
 // Update the owner tag of a volume, removing any stale owner tag and replacing
 // them with a new ownerID entry (if present).
 //
 // Calling this function with a nil ownerID will cause it to remove all owner tags.
-func (vl *volumeLock) setOwner(ctx context.Context, ref VolumeRef, ownerID *uint16, ownerNode *string) error {
+func (vl *volumeLocker) setOwner(ctx context.Context, ref VolumeRef, ownerID *uint16, ownerNode *string) error {
 	// Fetch the volume and get its tags
 	vol, err := vl.fetch(ctx, &ref)
 	if err != nil {
@@ -199,7 +214,7 @@ func (vl *volumeLock) setOwner(ctx context.Context, ref VolumeRef, ownerID *uint
 	return err
 }
 
-func (vl *volumeLock) sync(ctx context.Context) error {
+func (vl *volumeLocker) sync(ctx context.Context) error {
 	vl.mutex.Lock()
 	defer vl.mutex.Unlock()
 
@@ -214,7 +229,7 @@ func (vl *volumeLock) sync(ctx context.Context) error {
 	}
 
 	for _, lv := range lvs.Lvs {
-		vol := NewVolumeRefFromLv(*lv)
+		vol := NewVolumeRefFromLv(lv)
 		// Try to deactivate volume if it is not opened
 		if lv.LvDeviceOpen != pb.LvDeviceOpen_LV_DEVICE_OPEN_OPEN {
 			_, err = vl.lvmctrld.LvChange(ctx, &pb.LvChangeRequest{

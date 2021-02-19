@@ -5,9 +5,9 @@ go 1.13
 require (
 	github.com/aleofreddi/csi-sanlock-lvm/logger v1.0.0
 	github.com/aleofreddi/csi-sanlock-lvm/proto v1.0.0
-	github.com/golang/protobuf v1.4.0
+	github.com/golang/protobuf v1.4.3
 	github.com/kylelemons/godebug v1.1.0
-	google.golang.org/grpc v1.23.0
+	google.golang.org/grpc v1.27.0
 	k8s.io/klog v1.0.0
 )
 
