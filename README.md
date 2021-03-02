@@ -7,7 +7,8 @@
 `csi-sanlock-lvm` is a CSI driver for LVM and Sanlock.
 
 It comes in handy when you want your nodes to access data on a shared block
-device - a typical example being Kubernetes on bare metal with a SAN.
+device - a typical example being Kubernetes on bare metal on a SAN (storage area
+network).
 
 ## Maturity
 
@@ -17,7 +18,7 @@ This project is in alpha state, YMMV.
 
 - Dynamic volume provisioning
     - Support both filesystem and block devices
-    - ~~Support different filesystems~~ (TODO)
+    - Support different filesystems
     - ~~Support different RAID levels~~ (TODO)
     - Support single node read/write access
 - Online volume extension
@@ -39,22 +40,23 @@ Also, Sanlock requires every cluster node to get an unique integer in the range
 which works as long as all the nodes reside in a subnet that contains at most
 2000 addresses (a `/22` subnet or smaller).
 
-## Deployment
+## Installation
 
-Before deploying the driver you should initialize a shared volume group.
+This chapter describes a step-by-step procedure to get csi-sanlock-lvm running
+on your cluster.
 
 ### Initialize a shared volume group
 
 Before deploying the driver, you need to have at least a shared volume group set
-up. You can use the `csi-sanlock-lvm-init` pod to initialize lvm as follows:
-
-k version -o json | jq '.serverVersion.major + "." + .serverVersion.minor'
+up, as well as some logical volumes dedicated for csi-sanlock-lvm rpc machenism.
+You can use the provided `csi-sanlock-lvm-init` pod to initialize lvm as
+follows:
 
 ```shell
 # Extract the kubernetes major.minor version.
-kver="$(kubectl version -o json | jq '.serverVersion.major + "." + .serverVersion.minor')"
+kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
 
-kubectl create -f ...
+kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
 ```
 
 Then attach the init pod as follow and initialize the VG.
@@ -68,15 +70,17 @@ volumes:
 
 ```shell
 # Adjust your devices before running this!
-vgcreate --shared vg01 /dev/vde /dev/vdf0
+vgcreate --shared vg01 [/dev/device1 ... /dev/deviceN]
 
 # Create the csi-rpc-data logical volume.
-lvcreate -a n -L 8m -n csi-rpc-data \
-  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=data vg01
+lvcreate -L 8m -n csi-rpc-data \
+  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=data vg01 && 
+  lvchange -a n vg01/csi-rpc-data
 
 # Create the csi-rpc-lock logical volume.
-lvcreate -a n -L 512b -n csi-rpc-lock \
-  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=lock vg01
+lvcreate -L 512b -n csi-rpc-lock \
+  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=lock vg01 &&
+  lvchange -a n vg01/csi-rpc-lock 
 
 # Initialization complete, terminate the pod successfully.
 exit 0
@@ -102,30 +106,31 @@ as needed):
 
 ```shell
 # Extract the kubernetes major.minor version.
-kver="$(kubectl version -o json | jq '.serverVersion.major + "." + .serverVersion.minor')"
+kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
 
 # Install the csi-sanlock-lvm driver.
-kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.3"
+kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.4"
 ```
 
-On a successful installation, all csi pods should be running (with the exception
-of the initialization job one, if any):
+It might take up to 3 minutes for the csi plugin to become `Running` on each
+node, and all the containers should be ready (for the plugin ones that would
+be `4/4`). To check the current status you can use the following command:
 
 ```shell
 kubectl -n csi-sanlock-lvm-system get pod
 ```
 
-You should get a similar output:
+You should get an output similar to:
+
 ```
-NAME                            READY   STATUS      RESTARTS   AGE
-csi-sanlock-lvm-attacher-0      1/1     Running     0          4h41m
-csi-sanlock-lvm-init-bwsh7      0/1     Completed   0          4h42m
-csi-sanlock-lvm-plugin-b44sh    4/4     Running     0          4h41m
-csi-sanlock-lvm-plugin-nnbfz    4/4     Running     1          4h41m
-csi-sanlock-lvm-provisioner-0   1/1     Running     0          4h41m
-csi-sanlock-lvm-resizer-0       1/1     Running     0          4h41m
-csi-sanlock-lvm-snapshotter-0   1/1     Running     0          4h41m
-snapshot-controller-0           1/1     Running     0          4h41m
+NAME                            READY   STATUS    RESTARTS   AGE
+csi-sanlock-lvm-attacher-0      1/1     Running   0          2m15s
+csi-sanlock-lvm-plugin-cm7h6    4/4     Running   0          2m13s
+csi-sanlock-lvm-plugin-zkw84    4/4     Running   0          2m13s
+csi-sanlock-lvm-provisioner-0   1/1     Running   0          2m14s
+csi-sanlock-lvm-resizer-0       1/1     Running   0          2m14s
+csi-sanlock-lvm-snapshotter-0   1/1     Running   0          2m14s
+snapshot-controller-0           1/1     Running   0          2m14s
 ```
 
 ### Setup storage and snapshot classes
@@ -169,11 +174,36 @@ kubectl apply -f examples/snap.yaml
 
 ## Building the binaries
 
-If you want to build the driver yourself, you can do so with the following
-command from the root directory:
+### Requirements
+
+To build the project, you need:
+
+* A recent version of the golang compiler;
+* GNU make;
+* protoc compiler.
+
+To generate go implementations from proto files, you need to install
+`protoc-gen-go` as follows:
+
+```shell
+go get github.com/golang/protobuf/protoc-gen-go
+```
+
+### Build binaries
+
+If you want to build the driver yourself, you can do so invoking make:
 
 ```shell
 make
+```
+
+### Build docker images
+
+Similarly, you want to build docker images for the driver using
+the `build-image` target:
+
+```shell
+make build-image
 ```
 
 ## Security
