@@ -2,16 +2,22 @@
 
 all: build ;
 
-%: %.deploy %.diskrpc %.driverd %.lvmctrld  %.proto ;
+%: %.deploy %.diskrpc %.driverd %.lvmctrld %.proto ;
 
-build.lvmctrld: build.proto
-	$(MAKE) -C lvmctrld build
+build.deploy: $(filter clean%,$(MAKECMDGOALS))
+	$(MAKE) -C deploy build
 
-build.diskrpc: build.proto
+build.diskrpc: build.proto $(filter clean%,$(MAKECMDGOALS))
 	$(MAKE) -C diskrpc build
 
-build.driverd: build.proto
+build.driverd: build.proto $(filter clean%,$(MAKECMDGOALS))
 	$(MAKE) -C driverd build
+
+build.lvmctrld: build.proto $(filter clean%,$(MAKECMDGOALS))
+	$(MAKE) -C lvmctrld build
+
+build.proto: $(filter clean%,$(MAKECMDGOALS))
+	$(MAKE) -C proto build
 
 test.lvmctrld: test.proto
 	$(MAKE) -C lvmctrld test
