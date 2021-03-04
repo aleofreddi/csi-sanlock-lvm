@@ -22,6 +22,20 @@ die() {
 me="$(basename $0)"
 rootdir="$(dirname $0)"
 rollback=:
+verbosity=3
+
+while getopts "hv:" arg; do
+  case $arg in
+  v)
+    verbosity="$OPTARG"
+    ;;
+  *)
+    echo Usage: "$(basename "$0")" [-v verbosity] [-- csi-sanity-params] >&2
+    exit 1
+    ;;
+  esac
+done
+shift $((OPTIND-1))
 
 [[ "$(uname | tr '[A-Z]' '[a-z]')" = linux ]] || die "$me requires a Linux machine"
 
@@ -37,28 +51,32 @@ done
 
 tmpdir="$(mktemp -d /tmp/csi-sanity-$$.XXXXX)" || die Failed to allocate a temporary directory
 rollback="echo Removing temporary directory \"$tmpdir\"; rm -rf \"$tmpdir\"; $rollback"
-trap "$rollback" EXIT
+trap "(trap '' INT; $rollback)" EXIT
 
 imgfile="$tmpdir/img"
 fallocate -l 1GiB "$imgfile" || die Failed to allocate test image file
 
 device="$(losetup --show -f "$imgfile")" || die Failed to setup loopback device
 rollback="echo Detaching $device; losetup -d $device; $rollback"
-trap "$rollback" EXIT
+trap "(trap '' INT; $rollback)" EXIT
 
 pvcreate -f "$device" || die Failed to create physical device
 
 vgcreate -s $((1024*1024))b vg_csi_sanity_$$ "$device" || die Failed to create volume group
+rollback="echo Bringing down vg_csi_sanity_$$; vgchange -a n vg_csi_sanity_$$; $rollback"
+
+lvcreate -L 512b -n rpc-lock --addtag csi-sanlock-lvm.vleo.net/rpcRole=lock vg_csi_sanity_$$ || die Failed to create rpc lock logical volume
+lvcreate -L 8m -n rpc-data --addtag csi-sanlock-lvm.vleo.net/rpcRole=data vg_csi_sanity_$$ || die Failed to create rpc data logical volume
 
 lvmctrld_sock="unix://$tmpdir/lvmctrld.sock"
-"$rootdir"/lvmctrld/bin/lvmctrld --listen "$lvmctrld_sock" &
+"$rootdir"/lvmctrld/bin/lvmctrld --listen "$lvmctrld_sock" --no-lock -v "$verbosity" &
 rollback="echo Killing lvmctrld pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
-trap "$rollback" EXIT
+trap "(trap '' INT; $rollback)" EXIT
 
 driverd_sock="unix://$tmpdir/driverd.sock"
-"$rootdir"/driverd/bin/driverd --lvmctrld "$lvmctrld_sock" --node-id node --listen "$driverd_sock" &
+"$rootdir"/driverd/bin/driverd --lvmctrld "$lvmctrld_sock" --listen "$driverd_sock" -v "$verbosity" &
 rollback="echo Killing driverd pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
-trap "$rollback" EXIT
+trap "(trap '' INT; $rollback)" EXIT
 
 param_file="$tmpdir/params"
 cat > "$param_file" <<EOF

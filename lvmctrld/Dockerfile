@@ -19,7 +19,7 @@ RUN apt-get update \
 
 ARG VERSION
 ADD . /src
-RUN make -C /src clean build
+RUN make -C /src clean build.lvmctrld
 
 FROM ubuntu:18.04
 

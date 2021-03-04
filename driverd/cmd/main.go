@@ -16,6 +16,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	driverd "github.com/aleofreddi/csi-sanlock-lvm/driverd/pkg"
@@ -23,12 +24,13 @@ import (
 )
 
 var (
-	listen   = flag.String("listen", "unix:///tmp/csi.sock", "listen address")
-	lvmctrld = flag.String("lvmctrld", "tcp://127.0.0.1:9000", "lvmctrld address")
-	name     = flag.String("name", "csi-lvm-sanlock.vleo.net", "name of the driver")
-	nodeId   = flag.String("node-id", "", "node id")
-	version  string
-	commit   string
+	drvName   = flag.String("driver-name", "csi-lvm-sanlock.vleo.net", "driverName of the driver")
+	listen    = flag.String("listen", "unix:///var/run/csi.sock", "listen address")
+	lvmctrld  = flag.String("lvmctrld", "unix:///var/run/lvmctrld.sock", "lvmctrld address")
+	nodeName  = flag.String("node-name", "", "node name")
+	defaultFs = flag.String("default-fs", "ext4", "default filesystem to use when none is specified")
+	version   string
+	commit    string
 )
 
 func main() {
@@ -36,19 +38,74 @@ func main() {
 	flag.Parse()
 	klog.Infof("Starting driverd %s (%s)", version, commit)
 
-	// Start server
-	listener, err := driverd.NewListener(*name, version, *nodeId, *listen, *lvmctrld)
+	listener, err := bootstrap()
 	if err != nil {
-		klog.Errorf("Failed to instance listener: %s", err.Error())
-		os.Exit(1)
-	}
-	if err = listener.Init(); err != nil {
-		klog.Errorf("Failed to initialize listener: %s", err.Error())
-		os.Exit(1)
+		klog.Errorf("Bootstrap failed: %v", err)
+		os.Exit(2)
 	}
 	if err = listener.Run(); err != nil {
-		klog.Errorf("Failed to run listener: %s", err.Error())
-		os.Exit(1)
+		klog.Errorf("Execution failed: %v", err)
+		os.Exit(3)
 	}
 	os.Exit(0)
+}
+
+func bootstrap() (*driverd.Listener, error) {
+	// Start lvmctrld client.
+	client, err := driverd.NewLvmCtrldClient(*lvmctrld)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance lvmctrld client: %v", err)
+	}
+	// Wait for lvmctrld to be ready.
+	if err := client.Wait(); err != nil {
+		return nil, fmt.Errorf("lvmctrld startup failed: %v", err)
+	}
+
+	// Retrieve hostname.
+	var node string
+	if *nodeName != "" {
+		node = *nodeName
+	} else {
+		node, err = os.Hostname()
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve hostname: %v", err)
+		}
+	}
+	// Start lock.
+	vl, err := driverd.NewVolumeLocker(client, node)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance volume lock: %v", err)
+	}
+	// Start DiskRPC
+	drpc, err := driverd.NewDiskRpcService(client, vl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance disk rpc service: %v", err)
+	}
+	// Instance servers.
+	is, err := driverd.NewIdentityServer(*drvName, version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance identity server: %v", err)
+	}
+	fsr, err := driverd.NewFileSystemRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance filesystem registry: %v", err)
+	}
+	ns, err := driverd.NewNodeServer(client, vl, fsr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance identity server: %v", err)
+	}
+	cs, err := driverd.NewControllerServer(client, vl, drpc, *defaultFs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance controller server: %v", err)
+	}
+	// Start DiskRPC
+	if err := drpc.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start disk rpc: %v", err)
+	}
+	// Start server
+	listener, err := driverd.NewListener(*listen, is, ns, cs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance listener: %s", err.Error())
+	}
+	return listener, nil
 }

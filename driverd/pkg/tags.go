@@ -14,20 +14,84 @@
 
 package driverd
 
-import "fmt"
-
-const (
-	tagPrefix    = "csi-sanlock-lvm.vleo.net"
-	nameTag      = tagPrefix + "/name="
-	ownerTag     = tagPrefix + "/owner="
-	fsTag        = tagPrefix + "/fs="
-	transientTag = tagPrefix + "/transient="
+import (
+	"fmt"
+	"strings"
 )
 
-func getTransientTag(nodeId string) string {
-	return fmt.Sprintf("%s%s", transientTag, nodeId)
+type TagKey string
+
+const (
+	tagPrefix = "csi-sanlock-lvm.vleo.net/"
+
+	nameTagKey      TagKey = "name"
+	fsTagKey        TagKey = "fs"
+	ownerIdTagKey   TagKey = "ownerId"
+	ownerNodeTagKey TagKey = "ownerNode"
+	sourceTagKey    TagKey = "src"
+
+	rpcRoleTagKey TagKey = "rpcRole"
+)
+
+type LogVolType string
+
+const (
+	VolumeVolType    LogVolType = "volume"
+	SnapshotVolType  LogVolType = "snapshot"
+	TemporaryVolType LogVolType = "temp"
+)
+
+var (
+	encodedTagPrefix = encodeTag(tagPrefix)
+)
+
+func decodeTagKV(encoded string) (TagKey, string, bool, error) {
+	if !strings.HasPrefix(encoded, encodedTagPrefix) {
+		return "", "", false, nil
+	}
+	decoded, err := decodeTag(encoded[len(encodedTagPrefix):])
+	if err != nil {
+		return "", "", false, err
+	}
+	i := strings.Index(decoded, "=")
+	if i == -1 {
+		return "", "", false, fmt.Errorf("invalid tag value %q", encoded)
+	}
+	return TagKey(decoded[0:i]), decoded[i+1:], true, nil
 }
 
-func getOwnerTag(nodeId string, lvmctrldAddr string) string {
-	return fmt.Sprintf("%s%s@%s", ownerTag, nodeId, lvmctrldAddr)
+func encodeTagKV(key TagKey, value string) string {
+	return encodeTag(fmt.Sprintf("%s%s=%s", tagPrefix, key, value))
+}
+
+func encodeTagKeyPrefix(key TagKey) string {
+	return encodeTag(fmt.Sprintf("%s%s=", tagPrefix, key))
+}
+
+func encodeTags(tags map[TagKey]string) []string {
+	r := make([]string, len(tags))
+	i := 0
+	for key, value := range tags {
+		r[i] = encodeTagKV(key, value)
+		i++
+	}
+	return r
+}
+
+func decodeTags(encodedTags []string) (map[TagKey]string, error) {
+	r := make(map[TagKey]string)
+	for _, v := range encodedTags {
+		key, value, ok, err := decodeTagKV(v)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		if _, ok := r[key]; ok {
+			return nil, fmt.Errorf("duplicate tag entry for key %q", key)
+		}
+		r[key] = value
+	}
+	return r, nil
 }

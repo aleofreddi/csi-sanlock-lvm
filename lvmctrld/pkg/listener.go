@@ -16,35 +16,37 @@ package lvmctrld
 
 import (
 	"fmt"
-	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
-	"google.golang.org/grpc"
-	"k8s.io/klog"
 	"net"
 	"net/url"
 	"os"
+
+	logger "github.com/aleofreddi/csi-sanlock-lvm/logger"
+	"github.com/aleofreddi/csi-sanlock-lvm/proto"
+	"google.golang.org/grpc"
+	"k8s.io/klog"
 )
 
-type listener struct {
-	lsAddr string
+type Listener struct {
+	addr string
 
 	ls *lvmctrldServer
 }
 
-func NewListener(lsAddr string) (*listener, error) {
-	return &listener{
-		lsAddr: lsAddr,
+func NewListener(addr string, id uint16) (*Listener, error) {
+	return &Listener{
+		addr: addr,
 
-		ls: NewLvmctrldServer(),
+		ls: NewLvmctrldServer(id),
 	}, nil
 }
 
-func (l *listener) Init() error {
+func (l *Listener) Init() error {
 	return nil
 }
 
-func (l *listener) Run() error {
+func (l *Listener) Run() error {
 	// Start gRPC server
-	lsProto, lsAddr, err := parseAddress(l.lsAddr)
+	lsProto, lsAddr, err := parseAddress(l.addr)
 	if err != nil {
 		return fmt.Errorf("invalid listen address: %s", err.Error())
 	}
@@ -59,7 +61,7 @@ func (l *listener) Run() error {
 		return fmt.Errorf("failed to listen %s://%s: %s", lsProto, lsAddr, err.Error())
 	}
 	opts := []grpc.ServerOption{
-		grpc.UnaryInterceptor(GrpcLogger),
+		grpc.UnaryInterceptor(logger.GrpcLogger),
 	}
 	grpcServer := grpc.NewServer(opts...)
 	proto.RegisterLvmCtrldServer(grpcServer, l.ls)

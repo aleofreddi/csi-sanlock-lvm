@@ -12,51 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: batch/v1
-kind: Job
+apiVersion: v1
+kind: Pod
 metadata:
   name: csi-sanlock-lvm-init
 spec:
-  template:
-    spec:
-      initContainers:
-        - name: modprobe
-          image: busybox:1.28
-          command: ['sh', '-c', 'modprobe dm_thin_pool']
-          volumeMounts:
-            - mountPath: /lib/modules
-              name: modules-dir
-              readOnly: true
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              add:
-                - SYS_MODULE
-              drop:
-                - ALL
-            readOnlyRootFilesystem: true
-
-      containers:
-        - name: init
-          image: quay.io/aleofreddi/lvmctrld:v0.3
-          imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "sanlock daemon; lvmlockd --host-id 2000; pvcreate --config 'global{use_lvmlockd=0}' -f /dev/sdX; vgcreate --shared vg01 /dev/sdX"]
-          volumeMounts:
-            - mountPath: /dev
-              name: dev-dir
-          securityContext:
-            privileged: true
-      volumes:
-        - hostPath:
-            path: /dev
-            type: Directory
+  containers:
+    - name: init
+      image: quay.io/aleofreddi/lvmctrld:v0.4
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c", "sanlock daemon -w 0; lvmlockd --host-id 2000; bash"]
+      stdin: true
+      stdinOnce: true
+      tty: true
+      volumeMounts:
+        - mountPath: /dev
           name: dev-dir
-        - hostPath:
-            path: /lib/modules
-            type: Directory
+        - mountPath: /lib/modules
           name: modules-dir
-      restartPolicy: Never
+          readOnly: true
+      securityContext:
+        privileged: true
+        capabilities:
+          add:
+            - SYS_MODULE
+          drop:
+            - ALL
+  restartPolicy: Never
 
-  backoffLimit: 0
-  completions: 1
-  parallelism: 0 # This job is disabled by default!
+  volumes:
+    - hostPath:
+        path: /dev
+        type: Directory
+      name: dev-dir
+    - hostPath:
+        path: /lib/modules
+        type: Directory
+      name: modules-dir

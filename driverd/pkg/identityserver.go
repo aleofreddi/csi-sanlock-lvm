@@ -22,26 +22,26 @@ import (
 )
 
 type identityServer struct {
-	name    string
+	drvName string
 	version string
 }
 
-func NewIdentityServer(name, version string) (*identityServer, error) {
-	if name == "" {
+func NewIdentityServer(drvName, version string) (*identityServer, error) {
+	if drvName == "" {
 		return nil, status.Error(codes.Unavailable, "missing driver name")
 	}
 	if version == "" {
 		return nil, status.Error(codes.Unavailable, "missing driver version")
 	}
 	return &identityServer{
-		name:    name,
+		drvName: drvName,
 		version: version,
 	}, nil
 }
 
 func (is *identityServer) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	return &csi.GetPluginInfoResponse{
-		Name:          is.name,
+		Name:          is.drvName,
 		VendorVersion: is.version,
 	}, nil
 }

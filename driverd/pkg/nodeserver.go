@@ -16,9 +16,9 @@ package driverd
 
 import (
 	"fmt"
-	"strings"
+	"strconv"
 
-	"github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/proto"
+	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
@@ -33,27 +33,33 @@ var nodeCapabilities = map[csi.NodeServiceCapability_RPC_Type]struct{}{
 }
 
 type nodeServer struct {
-	nodeId                string
-	lvmctrldAddr          string
-	lvmctrldClientFactory LvmCtrldClientFactory
-	newFileSystem         FileSystemFactory
+	nodeID     uint16
+	lvmctrld   pb.LvmCtrldClient
+	volumeLock VolumeLocker
+	fsRegistry FileSystemRegistry
 }
 
-func NewNodeServer(nodeId, lvmctrldAddr string, factory LvmCtrldClientFactory, newFileSystem FileSystemFactory) (*nodeServer, error) {
-	return &nodeServer{
-		nodeId:                nodeId,
-		lvmctrldAddr:          lvmctrldAddr,
-		lvmctrldClientFactory: factory,
-		newFileSystem:         newFileSystem,
-	}, nil
+func NewNodeServer(lvmctrld pb.LvmCtrldClient, volumeLock VolumeLocker, fsRegistry FileSystemRegistry) (*nodeServer, error) {
+	st, err := lvmctrld.GetStatus(context.Background(), &pb.GetStatusRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve status from lvmctrld: %v", err)
+	}
+	ns := &nodeServer{
+		nodeID:     uint16(st.NodeId),
+		lvmctrld:   lvmctrld,
+		volumeLock: volumeLock,
+		fsRegistry: fsRegistry,
+	}
+	return ns, nil
 }
 
 func (ns *nodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	id := strconv.Itoa(int(ns.nodeID))
 	topology := &csi.Topology{
-		Segments: map[string]string{topologyKeyNode: ns.nodeId},
+		Segments: map[string]string{topologyKeyNode: id},
 	}
 	return &csi.NodeGetInfoResponse{
-		NodeId:             ns.nodeId,
+		NodeId:             id,
 		AccessibleTopology: topology,
 	}, nil
 }
@@ -89,9 +95,10 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "inconsistent access type")
 	}
 
-	volumeId := req.GetVolumeId()
-	devicePath := fmt.Sprintf("/dev/%s", volumeId)
-	targetPath := req.GetTargetPath()
+	vol, err := NewVolumeRefFromID(req.GetVolumeId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
+	}
 
 	// Decode access type from request
 	var accessType VolumeAccessType
@@ -101,27 +108,24 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		accessType = BlockAccessType
 	}
 
-	// Connect to lvmctrld
-	client, err := ns.lvmctrldClientFactory.NewLocal()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
-	}
-	defer client.Close()
-
 	// Retrieve the filesystem type for the volume
-	lv, err := findLogicalVolume(ctx, client, volumeId)
+	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
 	if err != nil {
 		return nil, err
 	}
+	tags, err := decodeTags(lv.LvTags)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to decode tags for volume %q: %v", vol, err)
+	}
 
 	// Extract the filesystem
-	fsName, err := getFileSystemName(lv)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	fsName, ok := tags[fsTagKey]
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
 	}
-	fs, err := ns.newFileSystem(fsName)
+	fs, err := ns.fsRegistry.GetFileSystem(fsName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
 	}
 	if !fs.Accepts(accessType) {
 		return nil, status.Error(codes.InvalidArgument, "incompatible access type for this volume")
@@ -137,7 +141,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 	}
 
-	if err = fs.Mount(devicePath, targetPath, mountFlags); err != nil {
+	if err = fs.Mount(vol.DevPath(), req.GetTargetPath(), mountFlags); err != nil {
 		return nil, err
 	}
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -152,29 +156,29 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.InvalidArgument, "missing target path")
 	}
 
-	volumeId := req.GetVolumeId()
-
-	// Connect to lvmctrld
-	client, err := ns.lvmctrldClientFactory.NewLocal()
+	vol, err := NewVolumeRefFromID(req.GetVolumeId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
-	defer client.Close()
 
 	// Retrieve the filesystem type for the volume
-	lv, err := findLogicalVolume(ctx, client, volumeId)
+	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
 	if err != nil {
 		return nil, err
 	}
+	tags, err := decodeTags(lv.LvTags)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to decode tags for volume %q: %v", vol, err)
+	}
 
 	// Extract the filesystem
-	fsName, err := getFileSystemName(lv)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	fsName, ok := tags[fsTagKey]
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
 	}
-	fs, err := ns.newFileSystem(fsName)
+	fs, err := ns.fsRegistry.GetFileSystem(fsName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
 	}
 
 	// Unmount
@@ -198,53 +202,16 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.InvalidArgument, "missing staging target path")
 	}
 
-	volumeId := req.GetVolumeId()
-
-	// Connect to lvmctrld
-	client, err := ns.lvmctrldClientFactory.NewLocal()
+	vol, err := NewVolumeRefFromID(req.GetVolumeId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
-	defer client.Close()
 
-	// Activate volume
-	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
-		Target:   volumeId,
-		Activate: proto.LvActivationMode_ACTIVE_EXCLUSIVE,
-	})
+	// Lock the volume
+	err = ns.volumeLock.LockVolume(ctx, *vol, defaultLockOp)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to activate logical volume: %s", err.Error())
+		return nil, err
 	}
-
-	// Retrieve logical volume
-	lv, err := findLogicalVolume(ctx, client, volumeId)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list logical volume: %s", err.Error())
-	}
-
-	// Collect any stale owner tag
-	expectedOwnerTag := encodeTag(getOwnerTag(ns.nodeId, ns.lvmctrldAddr))
-	var delTags []string
-	for _, encodedTag := range lv.LvTags {
-		if encodedTag == expectedOwnerTag {
-			continue
-		}
-		decodedTag, _ := decodeTag(encodedTag)
-		if strings.HasPrefix(decodedTag, ownerTag) {
-			delTags = append(delTags, encodedTag)
-		}
-	}
-
-	// Add owner tag and remove stale owner tags if any
-	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
-		Target: volumeId,
-		AddTag: []string{expectedOwnerTag},
-		DelTag: delTags,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to update tags: %s", err.Error())
-	}
-
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -257,34 +224,16 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return nil, status.Error(codes.InvalidArgument, "missing staging target path")
 	}
 
-	volumeId := req.GetVolumeId()
-
-	// Connect to lvmctrld
-	client, err := ns.lvmctrldClientFactory.NewLocal()
+	vol, err := NewVolumeRefFromID(req.GetVolumeId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %s", err.Error())
-	}
-	defer client.Close()
-
-	// Deactivate volume
-	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
-		Target:   volumeId,
-		Activate: proto.LvActivationMode_DEACTIVATE,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to deactivate logical volume: %s", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
 
-	// Remove owner tag
-	ownerTag := encodeTag(getOwnerTag(ns.nodeId, ns.lvmctrldAddr))
-	_, err = client.LvChange(ctx, &proto.LvChangeRequest{
-		Target: volumeId,
-		DelTag: []string{ownerTag},
-	})
+	// Lock the volume
+	err = ns.volumeLock.UnlockVolume(ctx, *vol, defaultLockOp)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to remove tag: %v", err)
+		return nil, err
 	}
-
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
@@ -298,35 +247,52 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	if volumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume id")
 	}
+	if !volumeIdRe.MatchString(volumeId) {
+		return nil, status.Error(codes.NotFound, "invalid volume id")
+	}
 	if req.VolumePath == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume path")
 	}
 
-	// Connect to lvmctrld
-	client, err := ns.lvmctrldClientFactory.NewLocal()
+	vol, err := NewVolumeRefFromID(req.GetVolumeId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to connect to lvmctrld: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
-	defer client.Close()
 
 	// Retrieve the filesystem type for the volume
-	lv, err := findLogicalVolume(ctx, client, volumeId)
+	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
 	if err != nil {
 		return nil, err
+	}
+	tags, err := decodeTags(lv.LvTags)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to decode tags for volume %q: %v", vol, err)
 	}
 
 	// Extract the filesystem
-	fsName, err := getFileSystemName(lv)
-	if err != nil {
-		return nil, err
+	fsName, ok := tags[fsTagKey]
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
 	}
-	fs, err := ns.newFileSystem(fsName)
+	fs, err := ns.fsRegistry.GetFileSystem(fsName)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
+	}
+
+	// Issue the resize if the logical volume is smaller than required bytes
+	requiredBytes := uint64(req.CapacityRange.RequiredBytes)
+	if lv.LvSize < requiredBytes {
+		_, err = ns.lvmctrld.LvResize(ctx, &pb.LvResizeRequest{VgName: vol.Vg(), LvName: vol.Lv(), Size: requiredBytes})
+		if status.Code(err) == codes.OutOfRange {
+			return nil, status.Errorf(codes.OutOfRange, "insufficient free space")
+		}
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to resize volume %q: %v", vol.ID(), err)
+		}
 	}
 
 	// Resize the filesystem
-	err = fs.Grow("/dev/" + volumeId)
+	err = fs.Grow(vol.DevPath())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize filesystem: %s", err.Error())
 	}
@@ -334,32 +300,14 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
-func findLogicalVolume(ctx context.Context, client *LvmCtrldClientConnection, volumeId string) (*proto.LogicalVolume, error) {
-	lvs, err := client.Lvs(ctx, &proto.LvsRequest{
-		Select: "lv_role!=snapshot",
-		Target: volumeId,
+func lvsVolume(ctx context.Context, client pb.LvmCtrldClient, vol VolumeRef) (*pb.LogicalVolume, error) {
+	lvs, err := client.Lvs(ctx, &pb.LvsRequest{
+		Target: []string{vol.VgLv()},
 	})
-	if err != nil && status.Code(err) == codes.NotFound || lvs != nil && len(lvs.Lvs) != 1 {
-		return nil, status.Errorf(codes.NotFound, "volume not found")
+	if status.Code(err) == codes.NotFound {
+		return nil, status.Errorf(codes.NotFound, "volume %v not found", vol)
 	} else if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list volumes: %s", err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to list volumes: %v", err)
 	}
 	return lvs.Lvs[0], nil
-}
-
-func getFileSystemName(lv *proto.LogicalVolume) (string, error) {
-	fsName := ""
-	for _, encodedTag := range lv.LvTags {
-		decodedTag, _ := decodeTag(encodedTag)
-		if strings.HasPrefix(decodedTag, fsTag) {
-			if len(fsName) > 0 {
-				return "", fmt.Errorf("volume %s/%s has multiple filesystem tags", lv.VgName, lv.LvName)
-			}
-			fsName = decodedTag[len(fsTag):]
-		}
-	}
-	if fsName == "" {
-		return "", fmt.Errorf("volume %s/%s is missing filesystem tags", lv.VgName, lv.LvName)
-	}
-	return fsName, nil
 }

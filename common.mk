@@ -7,7 +7,7 @@ export VERSION
 COMMIT?=$(shell git rev-parse --short HEAD)
 export COMMIT
 
-proto/%.pb.go: %.proto
+%.pb.go: %.proto
 	protoc --go_out=plugins=grpc:. --go_opt=paths=source_relative $<
 
 mock/%.mi.go: %.go go.dep
@@ -21,3 +21,4 @@ mock/%.me.go: %.mock go.dep
 
 %.var.yaml: %.var
 	envsubst < $< > $@
+

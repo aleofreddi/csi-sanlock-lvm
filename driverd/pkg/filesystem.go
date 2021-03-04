@@ -16,7 +16,6 @@ package driverd
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 
@@ -25,11 +24,9 @@ import (
 	"k8s.io/kubernetes/pkg/util/mount"
 )
 
-type FileSystemFactoryInterface interface {
-	New(fs string) (FileSystem, error)
+type FileSystemRegistry interface {
+	GetFileSystem(filesystem string) (FileSystem, error)
 }
-
-type FileSystemFactory func(fs string) (FileSystem, error)
 
 type FileSystem interface {
 	Accepts(accessType VolumeAccessType) bool
@@ -39,29 +36,38 @@ type FileSystem interface {
 	Umount(mountPoint string) error
 }
 
+type fileSystemRegistry struct {
+}
+
 type rawFileSystem struct {
 	mounter mount.Interface
 }
 
-type ext4FileSystem struct {
-	mounter mount.Interface
+type fileSystem struct {
+	mounter    mount.Interface
+	fileSystem string
+}
+
+func NewFileSystemRegistry() (*fileSystemRegistry, error) {
+	return &fileSystemRegistry{}, nil
+}
+
+func (fr *fileSystemRegistry) GetFileSystem(filesystem string) (FileSystem, error) {
+	return NewFileSystem(filesystem)
 }
 
 func NewFileSystem(fs string) (FileSystem, error) {
-	switch fs {
-	case BlockAccessFsName:
+	if fs == BlockAccessFsName {
 		return &rawFileSystem{mount.New("")}, nil
-	case "ext4":
-		return &ext4FileSystem{mount.New("")}, nil
 	}
-	return nil, fmt.Errorf("invalid filesystem %q", fs)
+	return &fileSystem{mount.New(""), fs}, nil
 }
 
-func (fs *rawFileSystem) Make(device string) error {
+func (fs *rawFileSystem) Make(_ string) error {
 	return nil
 }
 
-func (fs *rawFileSystem) Grow(device string) error {
+func (fs *rawFileSystem) Grow(_ string) error {
 	return nil
 }
 
@@ -73,22 +79,18 @@ func (fs *rawFileSystem) Mount(source, mountPoint string, flags []string) error 
 	mounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
 	if err != nil {
 		if os.IsExist(err) {
-			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %s", mountPoint, err.Error())
+			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %v", mountPoint, err)
 		}
-		if err = fs.mounter.MakeFile(mountPoint); err != nil {
-			return status.Errorf(codes.Internal, "failed to create file %s: %s", mountPoint, err.Error())
+		if err = fs.mounter.MakeDir(mountPoint); err != nil {
+			return status.Errorf(codes.Internal, "failed to create mount point %s: %v", mountPoint, err)
 		}
 		mounted = true
 	}
 
 	if mounted {
-		// Get Options
-		options := []string{"bind"}
-		options = append(options, flags...)
-
 		// Mount
 		mounter := mount.New("")
-		err = mounter.Mount(source, mountPoint, "", options)
+		err = mounter.Mount(source, mountPoint, "", flags)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -100,8 +102,8 @@ func (fs *rawFileSystem) Umount(mountPoint string) error {
 	return umount(mountPoint)
 }
 
-func (fs *ext4FileSystem) Make(device string) error {
-	mkfs := exec.Command("mkfs", "-t", "ext4", device)
+func (fs *fileSystem) Make(device string) error {
+	mkfs := exec.Command("mkfs", "-t", fs.fileSystem, device)
 	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
 	mkfs.Stdout = stdout
 	mkfs.Stderr = stderr
@@ -111,8 +113,8 @@ func (fs *ext4FileSystem) Make(device string) error {
 	return nil
 }
 
-func (fs *ext4FileSystem) Grow(device string) error {
-	resize2fs := exec.Command("resize2fs", device)
+func (fs *fileSystem) Grow(device string) error {
+	resize2fs := exec.Command("fsadm", "resize", device)
 	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
 	resize2fs.Stdout = stdout
 	resize2fs.Stderr = stderr
@@ -122,11 +124,11 @@ func (fs *ext4FileSystem) Grow(device string) error {
 	return nil
 }
 
-func (fs *ext4FileSystem) Accepts(accessType VolumeAccessType) bool {
+func (fs *fileSystem) Accepts(accessType VolumeAccessType) bool {
 	return accessType == MountAccessType
 }
 
-func (fs *ext4FileSystem) Mount(source, mountPoint string, flags []string) error {
+func (fs *fileSystem) Mount(source, mountPoint string, flags []string) error {
 	mounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
 	if err != nil {
 		if os.IsExist(err) {
@@ -139,7 +141,7 @@ func (fs *ext4FileSystem) Mount(source, mountPoint string, flags []string) error
 	}
 
 	if mounted {
-		err = fs.mounter.Mount(source, mountPoint, "ext4", flags)
+		err = fs.mounter.Mount(source, mountPoint, fs.fileSystem, flags)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -147,7 +149,7 @@ func (fs *ext4FileSystem) Mount(source, mountPoint string, flags []string) error
 	return nil
 }
 
-func (fs *ext4FileSystem) Umount(mountPoint string) error {
+func (fs *fileSystem) Umount(mountPoint string) error {
 	return umount(mountPoint)
 }
 

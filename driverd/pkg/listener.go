@@ -16,77 +16,40 @@ package driverd
 
 import (
 	"fmt"
-	lvmctrld "github.com/aleofreddi/csi-sanlock-lvm/lvmctrld/pkg"
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/grpc"
-	"k8s.io/klog"
 	"net"
 	"net/url"
 	"os"
-	"time"
+
+	logger "github.com/aleofreddi/csi-sanlock-lvm/logger"
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc"
+	"k8s.io/klog"
 )
 
-type listener struct {
-	name    string
-	nodeId  string
-	lsAddr  string
-	lvmAddr string
-	lvmFact LvmCtrldClientFactory
+type Listener struct {
+	addr   string
 
-	iSrv *identityServer
-	nSrv *nodeServer
-	cSrv *controllerServer
+	is *identityServer
+	ns *nodeServer
+	cs *controllerServer
 }
 
-func NewListener(name, version, nodeId, lsAddr, lvmAddr string) (*listener, error) {
-	if name == "" {
-		return nil, fmt.Errorf("missing driver name")
-	}
-	if version == "" {
-		return nil, fmt.Errorf("missing driver version")
-	}
-	if lsAddr == "" {
+func NewListener(addr string, is *identityServer, ns *nodeServer, cs *controllerServer) (*Listener, error) {
+	if addr == "" {
 		return nil, fmt.Errorf("missing listen address")
 	}
-	if nodeId == "" {
-		return nil, fmt.Errorf("missing node id")
-	}
-	if lvmAddr == "" {
-		return nil, fmt.Errorf("missing lvmctrld address")
-	}
 
-	cf, err := NewLvmCtrldClientFactory(lvmAddr, 30*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instance lvmctrld client factory: %s", err.Error())
-	}
-	is, err := NewIdentityServer(name, version)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instance identity server: %s", err.Error())
-	}
-	ns, err := NewNodeServer(nodeId, lvmAddr, cf, NewFileSystem)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instance identity server: %s", err.Error())
-	}
-	cs, err := NewControllerServer(nodeId, lvmAddr, cf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instance controller server: %s", err.Error())
-	}
-
-	return &listener{
-		name:    name,
-		nodeId:  nodeId,
-		lsAddr:  lsAddr,
-		lvmAddr: lvmAddr,
-		lvmFact: cf,
-		iSrv:    is,
-		nSrv:    ns,
-		cSrv:    cs,
+	return &Listener{
+		addr:   addr,
+		is:     is,
+		ns:     ns,
+		cs:     cs,
 	}, nil
 }
 
-func (l *listener) Run() error {
+func (l *Listener) Run() error {
 	// Start gRPC server
-	lsProto, lsAddr, err := parseAddress(l.lsAddr)
+	lsProto, lsAddr, err := parseAddress(l.addr)
 	if err != nil {
 		return fmt.Errorf("invalid listen address: %s", err.Error())
 	}
@@ -101,12 +64,12 @@ func (l *listener) Run() error {
 		return fmt.Errorf("failed to listen %s://%s: %s", lsProto, lsAddr, err.Error())
 	}
 	opts := []grpc.ServerOption{
-		grpc.UnaryInterceptor(lvmctrld.GrpcLogger),
+		grpc.UnaryInterceptor(logger.GrpcLogger),
 	}
 	grpcServer := grpc.NewServer(opts...)
-	csi.RegisterIdentityServer(grpcServer, l.iSrv)
-	csi.RegisterNodeServer(grpcServer, l.nSrv)
-	csi.RegisterControllerServer(grpcServer, l.cSrv)
+	csi.RegisterIdentityServer(grpcServer, l.is)
+	csi.RegisterNodeServer(grpcServer, l.ns)
+	csi.RegisterControllerServer(grpcServer, l.cs)
 	klog.Infof("Starting gRPC server")
 	if err := grpcServer.Serve(listener); err != nil {
 		return fmt.Errorf("failed to start server: %s", err.Error())

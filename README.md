@@ -1,12 +1,14 @@
 # CSI Sanlock-LVM Driver
+
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Build Status](https://travis-ci.com/aleofreddi/csi-sanlock-lvm.svg?branch=master)](https://travis-ci.com/aleofreddi/csi-sanlock-lvm)
-[![Test Coverage](https://codecov.io/gh/aleofreddi/csi-sanlock-lvm/branch/master/graph/badge.svg)](https://codecov.io/gh/aleofreddi/csi-sanlock-lvm) 
+[![Test Coverage](https://codecov.io/gh/aleofreddi/csi-sanlock-lvm/branch/master/graph/badge.svg)](https://codecov.io/gh/aleofreddi/csi-sanlock-lvm)
 
 `csi-sanlock-lvm` is a CSI driver for LVM and Sanlock.
 
 It comes in handy when you want your nodes to access data on a shared block
-device - a typical example being Kubernetes on bare metal with a SAN.
+device - a typical example being Kubernetes on bare metal on a SAN (storage area
+network).
 
 ## Maturity
 
@@ -14,19 +16,19 @@ This project is in alpha state, YMMV.
 
 ## Features
 
--   Dynamic volume provisioning
-    -   Support both filesystem and block devices
-    -   ~~Support different filesystems~~ (TODO)
-    -   ~~Support different RAID levels~~ (TODO)
-    -   Support single node read/write access
--   Online volume extension
--   Online snapshot support
--   ~~Ephemeral volumes~~ (TODO)
+- Dynamic volume provisioning
+    - Support both filesystem and block devices
+    - Support different filesystems
+    - ~~Support different RAID levels~~ (TODO)
+    - Support single node read/write access
+- Online volume extension
+- Online snapshot support
+- ~~Ephemeral volumes~~ (TODO)
 
 ## Prerequisite
 
--   Kubernetes 1.17+
--   `kubectl`
+- Kubernetes 1.17+
+- `kubectl`
 
 ## Limitations
 
@@ -38,22 +40,57 @@ Also, Sanlock requires every cluster node to get an unique integer in the range
 which works as long as all the nodes reside in a subnet that contains at most
 2000 addresses (a `/22` subnet or smaller).
 
-## Deployment
+## Installation
 
-Before deploying the driver you should initialize a shared volume group.
+This chapter describes a step-by-step procedure to get csi-sanlock-lvm running
+on your cluster.
 
 ### Initialize a shared volume group
 
-You can either initialize it externally (like using lvm from a node) or use the
-provided `deploy/kubernetes-1.18/csi-sanlock-lvm-init.yaml` job template to get
-Kubernetes initialize your disks.
+Before deploying the driver, you need to have at least a shared volume group set
+up, as well as some logical volumes dedicated for csi-sanlock-lvm rpc machenism.
+You can use the provided `csi-sanlock-lvm-init` pod to initialize lvm as
+follows:
 
-To use the `csi-sanlock-lvm-init` job, do the following:
+```shell
+# Extract the kubernetes major.minor version.
+kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
 
-- Adjust the `command` value according to your need, so to create the proper
-physical volume(s) and volume group(s);
-- When you are ready to run, patch the job `parallelism` to `1` and let the job
-initialize the volume(s).
+kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
+```
+
+Then attach the init pod as follow and initialize the VG.
+
+```shell
+kubectl attach -it csi-sanlock-lvm-init
+```
+
+Within the init shell, initialize the shared volume group and the rpc logical
+volumes:
+
+```shell
+# Adjust your devices before running this!
+vgcreate --shared vg01 [/dev/device1 ... /dev/deviceN]
+
+# Create the csi-rpc-data logical volume.
+lvcreate -L 8m -n csi-rpc-data \
+  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=data vg01 && 
+  lvchange -a n vg01/csi-rpc-data
+
+# Create the csi-rpc-lock logical volume.
+lvcreate -L 512b -n csi-rpc-lock \
+  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=lock vg01 &&
+  lvchange -a n vg01/csi-rpc-lock 
+
+# Initialization complete, terminate the pod successfully.
+exit 0
+````
+
+Now cleanup the init pod:
+
+```shell
+kubectl delete po csi-sanlock-lvm-init
+```
 
 ### Deploy the driver
 
@@ -61,77 +98,119 @@ When the volume group setup is complete, go ahead and create a namespace to
 accommodate the driver:
 
 ```shell
-$ kubectl create namespace csi-sanlock-lvm-system
+kubectl create namespace csi-sanlock-lvm-system
 ```
 
-And then deploy using `kustomization` (adjust the kubernetes version in the
-link as needed):
+And then deploy using `kustomization` (adjust the kubernetes version in the link
+as needed):
 
 ```shell
-$ kubectl apply -k 'https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-1.18?ref=v0.3'
+# Extract the kubernetes major.minor version.
+kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
+
+# Install the csi-sanlock-lvm driver.
+kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.4"
 ```
 
-On a successful installation, all csi pods should be running (with the exception
-of the initialization job one, if any):
+It might take up to 3 minutes for the csi plugin to become `Running` on each
+node, and all the containers should be ready (for the plugin ones that would
+be `4/4`). To check the current status you can use the following command:
 
 ```shell
-$ kubectl -n csi-sanlock-lvm-system get pod
-NAME                            READY   STATUS      RESTARTS   AGE
-csi-sanlock-lvm-attacher-0      1/1     Running     0          4h41m
-csi-sanlock-lvm-init-bwsh7      0/1     Completed   0          4h42m
-csi-sanlock-lvm-plugin-b44sh    4/4     Running     0          4h41m
-csi-sanlock-lvm-plugin-nnbfz    4/4     Running     1          4h41m
-csi-sanlock-lvm-provisioner-0   1/1     Running     0          4h41m
-csi-sanlock-lvm-resizer-0       1/1     Running     0          4h41m
-csi-sanlock-lvm-snapshotter-0   1/1     Running     0          4h41m
-snapshot-controller-0           1/1     Running     0          4h41m
+kubectl -n csi-sanlock-lvm-system get pod
+```
+
+You should get an output similar to:
+
+```
+NAME                            READY   STATUS    RESTARTS   AGE
+csi-sanlock-lvm-attacher-0      1/1     Running   0          2m15s
+csi-sanlock-lvm-plugin-cm7h6    4/4     Running   0          2m13s
+csi-sanlock-lvm-plugin-zkw84    4/4     Running   0          2m13s
+csi-sanlock-lvm-provisioner-0   1/1     Running   0          2m14s
+csi-sanlock-lvm-resizer-0       1/1     Running   0          2m14s
+csi-sanlock-lvm-snapshotter-0   1/1     Running   0          2m14s
+snapshot-controller-0           1/1     Running   0          2m14s
 ```
 
 ### Setup storage and snapshot classes
 
-To enable the csi-sanlock-lvm driver you need to configure it via the
-`StorageClass` and `SnapshotClass` objects.
+To enable the csi-sanlock-lvm driver you need to refer it from a storage class.
 
-A configuration example is provided at `conf/csi-sanlock-lvm-storageclass.yaml`
-and `conf/csi-sanlock-lvm-snapshotclass.yaml`.
+In particular, you need to set up a `StorageClass` object to manage volumes, and
+optionally a `VolumeSnapshotClass` object to manage snapshots.
+
+Configuration examples are provided at `conf/csi-sanlock-lvm-storageclass.yaml`
+and `conf/csi-sanlock-lvm-volumesnapshotclass.yaml`.
 
 The following storage class parameters are supported:
 
 - `volumeGroup` _(required)_: the volume group to use when provisioning logical
-  volumes;
-- `filesystem` _(required)_: the filesystem to use (ex. `ext4`).
+  volumes.
+
+The following volume snapshot class parameters are supported:
+
+- `maxSizePct` _(optional)_: maximum snapshot size as percentage of its origin
+  size;
+- `maxSize` _(optional)_: maximum snapshot size.
+
+If multiple maximum size settings are provided, the snapshot will use the least
+one.
 
 ## Example application
 
-The examples directory contains an example configuration that will spin up a pvc
-and pod using it:
+The `examples` directory contains an example configuration that will spin up a
+pvc and pod using it:
 
 ```shell
-$ kubectl apply -f examples/pvc.yaml examples/pod.yaml
+kubectl apply -f examples/pvc.yaml examples/pod.yaml
 ```
 
 You can also create a snapshot of the volume using the `snap.yaml`:
 
 ```shell
-$ kubectl apply -f examples/snap.yaml
+kubectl apply -f examples/snap.yaml
 ```
 
 ## Building the binaries
 
-If you want to build the driver yourself, you can do so with the following
-command from the root directory:
+### Requirements
+
+To build the project, you need:
+
+* A recent version of the golang compiler;
+* GNU make;
+* protoc compiler.
+
+To generate go implementations from proto files, you need to install
+`protoc-gen-go` as follows:
 
 ```shell
-$ make
+go get github.com/golang/protobuf/protoc-gen-go
+```
+
+### Build binaries
+
+If you want to build the driver yourself, you can do so invoking make:
+
+```shell
+make
+```
+
+### Build docker images
+
+Similarly, you want to build docker images for the driver using
+the `build-image` target:
+
+```shell
+make build-image
 ```
 
 ## Security
 
-Each node runs a `lvmctrld` container within the csi-sanlock-lvm pod that opens
-the TCP port 9000. Access to this port should be restricted only to the
-`csi-sanlock-lvm-system` namespace as it poses a strong security risk - anyone
-connecting to the port 9000 can access and manage logical volumes and volume
-groups on the node.
+Each node exposes a CSI server via a socket to Kubernetes: access to such a
+socket grants direct access to any cluster volume. The same holds true for the
+RPC data volume which is used for inter-node communication.
 
 ## Disclaimer
 

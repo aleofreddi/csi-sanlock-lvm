@@ -19,13 +19,13 @@ import (
 	"os/exec"
 )
 
-type commander interface {
+type runner interface {
 	Exec(exe string, args ...string) (code int, stdout, stderr []byte, err error)
 }
 
-type osCommander struct{}
+type osRunner struct{}
 
-func (osCommander) Exec(exe string, args ...string) (code int, stdout, stderr []byte, err error) {
+func (osRunner) Exec(exe string, args ...string) (code int, stdout, stderr []byte, err error) {
 	proc := exec.Command(exe, args...)
 	stdoutBuf, stderrBuf := new(bytes.Buffer), new(bytes.Buffer)
 	proc.Stdout = stdoutBuf
@@ -34,6 +34,6 @@ func (osCommander) Exec(exe string, args ...string) (code int, stdout, stderr []
 	return proc.ProcessState.ExitCode(), stdoutBuf.Bytes(), stderrBuf.Bytes(), err
 }
 
-func NewCommander() commander {
-	return osCommander{}
+func NewCommander() runner {
+	return osRunner{}
 }

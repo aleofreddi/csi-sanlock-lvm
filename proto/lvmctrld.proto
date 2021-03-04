@@ -1,0 +1,144 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/aleofreddi/csi-sanlock-lvm/proto";
+
+message GetStatusRequest {
+}
+
+message GetStatusResponse {
+  uint32 node_id = 1;
+}
+
+enum LvActivationMode {
+  LV_ACTIVATION_MODE_NONE = 0;
+  LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE = 1;
+  LV_ACTIVATION_MODE_ACTIVE_SHARED = 2;
+  LV_ACTIVATION_MODE_DEACTIVATE = 3;
+}
+
+message VolumeGroup {
+  string vg_name = 1;
+  uint32 pv_count = 2;
+  uint32 lv_count = 3;
+  uint32 snap_count = 4;
+  string vg_attr = 5;
+  uint64 vg_size = 6;
+  uint64 vg_free = 7;
+  repeated string vg_tags = 8;
+}
+
+message VgsRequest {
+  string select = 2;
+  repeated string target = 3;
+}
+
+message VgsResponse {
+  repeated VolumeGroup vgs = 1;
+}
+
+enum LvDeviceOpen {
+  LV_DEVICE_OPEN_UNKNOWN = 0;
+  LV_DEVICE_OPEN_OPEN = 1;
+}
+
+message LogicalVolume {
+  string lv_name = 1;
+  string vg_name = 2;
+  string lv_attr = 3;
+  uint64 lv_size = 4;
+  string pool_lv = 5;
+  string origin = 6;
+  string data_percent = 7;
+  string metadata_percent = 8;
+  string move_pv = 9;
+  string mirror_log = 10;
+  string copy_percent = 11;
+  string convert_lv = 12;
+  repeated string lv_tags = 13;
+  repeated string lv_role = 14;
+  google.protobuf.Timestamp lv_time = 15;
+  LvDeviceOpen lv_device_open = 16;
+}
+
+message LvCreateRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+  uint64 size = 3;
+  repeated string lv_tags = 4;
+  string origin = 5;
+  LvActivationMode activate = 6;
+}
+
+message LvCreateResponse {
+}
+
+message LvRemoveRequest {
+  string select = 3;
+  repeated string target = 4;
+}
+
+message LvRemoveResponse {
+}
+
+message LvsRequest {
+  string select = 2;
+  repeated string sort = 3;
+  repeated string target = 4;
+}
+
+message LvsResponse {
+  repeated LogicalVolume lvs = 1;
+}
+
+message LvChangeRequest {
+  LvActivationMode activate = 2;
+  repeated string add_tag = 3;
+  repeated string del_tag = 4;
+  string select = 5;
+  repeated string target = 6;
+}
+
+message LvChangeResponse {
+}
+
+message LvResizeRequest {
+  string vg_name = 1;
+  string lv_name = 2;
+  uint64 size = 3;
+}
+
+message LvResizeResponse {
+}
+
+service LvmCtrld {
+  rpc GetStatus (GetStatusRequest) returns (GetStatusResponse) {
+  }
+  rpc Vgs (VgsRequest) returns (VgsResponse) {
+  }
+  rpc LvCreate (LvCreateRequest) returns (LvCreateResponse) {
+  }
+  rpc LvRemove (LvRemoveRequest) returns (LvRemoveResponse) {
+  }
+  rpc Lvs (LvsRequest) returns (LvsResponse) {
+  }
+  rpc LvChange (LvChangeRequest) returns (LvChangeResponse) {
+  }
+  rpc LvResize (LvResizeRequest) returns (LvResizeResponse) {
+  }
+}
