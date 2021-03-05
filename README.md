@@ -48,7 +48,7 @@ on your cluster.
 ### Initialize a shared volume group
 
 Before deploying the driver, you need to have at least a shared volume group set
-up, as well as some logical volumes dedicated for csi-sanlock-lvm rpc machenism.
+up, as well as some logical volumes dedicated for csi-sanlock-lvm rpc mechanism.
 You can use the provided `csi-sanlock-lvm-init` pod to initialize lvm as
 follows:
 
@@ -59,7 +59,7 @@ kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVer
 kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
 ```
 
-Then attach the init pod as follow and initialize the VG.
+Then attach the init pod as follows and initialize the VG.
 
 ```shell
 kubectl attach -it csi-sanlock-lvm-init
