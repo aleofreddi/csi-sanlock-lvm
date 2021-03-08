@@ -24,7 +24,7 @@ RUN make -C /src clean build.driverd
 FROM ubuntu:18.04
 
 RUN apt-get update \
-	&& apt-get install -y file util-linux e2fsprogs \
+	&& apt-get install -y file util-linux e2fsprogs lvm2 \
 	&& apt-get clean
 
 COPY --from=builder /src/driverd/bin/driverd /driverd
