@@ -114,12 +114,22 @@ func (fs *fileSystem) Make(device string) error {
 }
 
 func (fs *fileSystem) Grow(device string) error {
-	resize2fs := exec.Command("fsadm", "resize", device)
+	checkfs := exec.Command("fsadm", "check", device)
 	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	checkfs.Stdout = stdout
+	checkfs.Stderr = stderr
+	// 'fsadm check' can return code 3 when the requested check operation could
+	// not be performed because the filesystem is mounted and does not support an
+	// online fsck.
+	if err := checkfs.Run(); err != nil && checkfs.ProcessState.ExitCode() != 3 {
+		return status.Errorf(codes.Internal, "failed to check volume %s: %v (%s %s)", device, err, stdout.String(), stderr.String())
+	}
+	resize2fs := exec.Command("fsadm", "resize", device)
+	stdout, stderr = new(bytes.Buffer), new(bytes.Buffer)
 	resize2fs.Stdout = stdout
 	resize2fs.Stderr = stderr
-	if resize2fs.Run() != nil {
-		return status.Errorf(codes.Internal, "failed to resize volume %s: %s %s", device, stdout.String(), stderr.String())
+	if err := resize2fs.Run(); err != nil {
+		return status.Errorf(codes.Internal, "failed to resize volume %s: %v (%s %s)", device, err, stdout.String(), stderr.String())
 	}
 	return nil
 }
