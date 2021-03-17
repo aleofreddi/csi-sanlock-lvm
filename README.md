@@ -56,7 +56,7 @@ follows:
 # Extract the kubernetes major.minor version.
 kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
 
-kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.1/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
 ```
 
 Then attach the init pod as follows and initialize the VG.
@@ -74,13 +74,13 @@ vgcreate --shared vg01 [/dev/device1 ... /dev/deviceN]
 
 # Create the csi-rpc-data logical volume.
 lvcreate -L 8m -n csi-rpc-data \
-  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=data vg01 && 
+  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=data vg01 &&
   lvchange -a n vg01/csi-rpc-data
 
 # Create the csi-rpc-lock logical volume.
 lvcreate -L 512b -n csi-rpc-lock \
   --add-tag csi-sanlock-lvm.vleo.net/rpcRole=lock vg01 &&
-  lvchange -a n vg01/csi-rpc-lock 
+  lvchange -a n vg01/csi-rpc-lock
 
 # Initialization complete, terminate the pod successfully.
 exit 0
@@ -109,7 +109,7 @@ as needed):
 kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
 
 # Install the csi-sanlock-lvm driver.
-kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.4"
+kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.4.1"
 ```
 
 It might take up to 3 minutes for the csi plugin to become `Running` on each
