@@ -39,6 +39,7 @@ const (
 	VolumeVolType    LogVolType = "volume"
 	SnapshotVolType  LogVolType = "snapshot"
 	TemporaryVolType LogVolType = "temp"
+	RpcVolType       LogVolType = "rpc"
 )
 
 var (

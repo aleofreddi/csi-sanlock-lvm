@@ -109,7 +109,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	// Retrieve the filesystem type for the volume
-	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
+	lv, err := lvsVolume(ctx, ns.lvmctrld, vol)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +162,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 
 	// Retrieve the filesystem type for the volume
-	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
+	lv, err := lvsVolume(ctx, ns.lvmctrld, vol)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	// Lock the volume
-	err = ns.volumeLock.LockVolume(ctx, *vol, defaultLockOp)
+	err = ns.volumeLock.LockVolume(ctx, vol, defaultLockOp)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +230,7 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	}
 
 	// Lock the volume
-	err = ns.volumeLock.UnlockVolume(ctx, *vol, defaultLockOp)
+	err = ns.volumeLock.UnlockVolume(ctx, vol, defaultLockOp)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	}
 
 	// Retrieve the filesystem type for the volume
-	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
+	lv, err := lvsVolume(ctx, ns.lvmctrld, vol)
 	if err != nil {
 		return nil, err
 	}

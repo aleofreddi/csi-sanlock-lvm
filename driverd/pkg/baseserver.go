@@ -41,7 +41,7 @@ func newBaseServer(lvmctrld pb.LvmCtrldClient) (*baseServer, error) {
 }
 
 // Fetch volume info from a volume reference.
-func (bs *baseServer) fetch(ctx context.Context, ref *VolumeRef) (*VolumeInfo, error) {
+func (bs *baseServer) fetch(ctx context.Context, ref VolumeRef) (VolumeInfo, error) {
 	lvs, err := bs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
 		Target: []string{ref.VgLv()},
 	})
@@ -50,5 +50,5 @@ func (bs *baseServer) fetch(ctx context.Context, ref *VolumeRef) (*VolumeInfo, e
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to fetch volume %s: %v", ref, err)
 	}
-	return NewVolumeInfoFromLv(lvs.Lvs[0]), nil
+	return NewVolumeInfoFromLv(lvs.Lvs[0])
 }

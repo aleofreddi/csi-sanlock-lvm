@@ -47,8 +47,8 @@ const (
 )
 
 var (
-	volumeIdRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*@[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
-	vgRe             = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	volumeIdRe = regexp.MustCompile("^[a-z]:[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*:[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	vgRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
 )
 
 type VolumeAccessType int
@@ -173,7 +173,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	vol := NewVolumeRefFromVgTypeName(vgName, VolumeVolType, req.GetName())
 	// Retrieve source if any
-	var srcVol, srcSnap, lockVol *VolumeInfo
+	var srcVol, srcSnap, lockVol VolumeInfo
 	var srcSize uint64
 	var err error
 	if src := req.VolumeContentSource; src != nil {
@@ -226,7 +226,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		if srcFsName != fsName {
 			return nil, status.Errorf(codes.InvalidArgument, "incompatible filesystem: source filesystem %s, target filesystem %s", srcFsName, fsName)
 		}
-		srcSize = lockVol.LvSize
+		srcSize = lockVol.Size()
 		if size < srcSize {
 			return nil, status.Errorf(codes.InvalidArgument, "source content requires at least %d bytes, got only %d bytes", srcSize, size)
 		}
@@ -253,15 +253,15 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}()
 
 	// Create a temporary snapshot from src volume, if specified
-	var dataVol *VolumeRef
+	var dataVol VolumeRef
 	if lockVol != nil {
 		// Try to acquire exclusive lock on orig, or delegate to owner node if already locked.
 		klog.V(3).Infof("Trying to acquire lock on %q to read source data", lockVol)
 		// We add a uuid because we don't want this lock to be reentrant.
 		lockId := fmt.Sprintf("CreateVolume(%s,%s)", vol, uuid.New().String())
-		err = cs.volumeLock.LockVolume(ctx, lockVol.VolumeRef, lockId)
+		err = cs.volumeLock.LockVolume(ctx, lockVol, lockId)
 		if status.Code(err) == codes.PermissionDenied {
-			ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, lockVol.VolumeRef)
+			ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, lockVol)
 			if err != nil {
 				return nil, err
 			}
@@ -273,7 +273,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		} else if err != nil {
 			return nil, err
 		}
-		defer cs.tryVolumeUnlock(ctx, lockVol.VolumeRef, lockId)
+		defer cs.tryVolumeUnlock(ctx, lockVol, lockId)
 
 		if srcVol != nil {
 			// When cloning a volume, we'll create a temporary snapshot to have a consistent data view.
@@ -293,7 +293,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			cleanupVols[dataVol.VgLv()] = struct{}{}
 		} else {
 			klog.V(3).Infof("Using the snapshot %s as content source", dataVol)
-			dataVol = &srcSnap.VolumeRef
+			dataVol = srcSnap
 		}
 	}
 
@@ -326,11 +326,11 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			}
 			// FIXME: check that `existing` is a volume, not a snapshot
 			// FIXME: check that sourceTag matches srcVol
-			if uint64(req.GetCapacityRange().GetRequiredBytes()) > d.LvSize {
+			if uint64(req.GetCapacityRange().GetRequiredBytes()) > d.Size() {
 				return nil, status.Errorf(codes.AlreadyExists, "volume with the same name but with different size already exist")
 			}
 			return &csi.CreateVolumeResponse{
-				Volume: lvToVolume(d.LogicalVolume),
+				Volume: lvToVolume(d.LvmLv()),
 			}, nil
 		}
 		return nil, status.Errorf(codes.Internal, "failed to create volume %s: %v", vol, err)
@@ -339,10 +339,10 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	cleanupVols[vol.VgLv()] = struct{}{}
 	// Now lock the new volume
 	lockId := fmt.Sprintf("CreateVolume(%s,%s)", vol, uuid.New().String())
-	if err := cs.volumeLock.LockVolume(ctx, *vol, lockId); err != nil {
+	if err := cs.volumeLock.LockVolume(ctx, vol, lockId); err != nil {
 		return nil, err
 	}
-	defer cs.tryVolumeUnlock(ctx, *vol, lockId)
+	defer cs.tryVolumeUnlock(ctx, vol, lockId)
 
 	if dataVol == nil {
 		// Format the volume if no source is specified, else copy the data
@@ -570,8 +570,8 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	// We always return NodeExpansionRequired to ensure that the filesystem size
 	// matches the volume size, in case the CO looses state.
 	requiredBytes := uint64(req.CapacityRange.RequiredBytes)
-	if d.LvSize >= requiredBytes {
-		return &csi.ControllerExpandVolumeResponse{CapacityBytes: int64(d.LvSize), NodeExpansionRequired: true}, nil
+	if d.Size() >= requiredBytes {
+		return &csi.ControllerExpandVolumeResponse{CapacityBytes: int64(d.Size()), NodeExpansionRequired: true}, nil
 	}
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         int64(requiredBytes), //int64(lv.LvSize),
@@ -582,7 +582,7 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	// List volumes
 	volumes, err := cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
-		Select: "lv_name=~^" + volumeLvPrefix,
+		Select: fmt.Sprintf("lv_name=~^%s-%c-", lvmPrefix, volTypeToCode[VolumeVolType]),
 		Sort:   []string{"vg_name", "lv_name"},
 	})
 	if err != nil {
@@ -613,7 +613,7 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 		s = math.Min(s, i+int(req.MaxEntries))
 	}
 
-	// Map entries
+	// Map entries.
 	entries := make([]*csi.ListVolumesResponse_Entry, s-i)
 	for j := 0; i < s; {
 		entries[j] = &csi.ListVolumesResponse_Entry{Volume: lvToVolume(lvs[i])}
@@ -621,10 +621,13 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 		i++
 	}
 
-	// Set next page token if any
+	// Set next page token if any.
 	next := ""
 	if s < len(lvs) {
-		vol := NewVolumeInfoFromLv(lvs[s])
+		vol, err := NewVolumeInfoFromLv(lvs[s])
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "failed to parse logical volume: %v", err)
+		}
 		next = vol.ID()
 	}
 
@@ -653,9 +656,9 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	// Acquire exclusive lock on orig, or delegate to owner node if already locked
 	// We add a uuid because we don't want this lock to be reentrant.
 	lockId := fmt.Sprintf("CreateSnapshot(%s,%s)", snap, uuid.New().String())
-	err = cs.volumeLock.LockVolume(ctx, *orig, lockId)
+	err = cs.volumeLock.LockVolume(ctx, orig, lockId)
 	if status.Code(err) == codes.PermissionDenied {
-		ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, *orig)
+		ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, orig)
 		if err != nil {
 			return nil, err
 		}
@@ -667,14 +670,14 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	} else if err != nil {
 		return nil, err
 	}
-	defer cs.tryVolumeUnlock(ctx, *orig, lockId)
+	defer cs.tryVolumeUnlock(ctx, orig, lockId)
 
 	// Retrieve origin information.
 	origInfo, err := cs.fetch(ctx, orig)
 	if err != nil {
 		return nil, err
 	}
-	size := origInfo.LvSize
+	size := origInfo.Size()
 	if value, present := req.Parameters[maxSizePctParamKey]; present {
 		maxPctSize, err := strconv.ParseFloat(value, 64)
 		if err != nil {
@@ -683,7 +686,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		if maxPctSize == 0 || maxPctSize > 1 {
 			return nil, status.Errorf(codes.InvalidArgument, "invalid %s parameter %q: expected a value in range (0, 1]", maxSizePctParamKey, value)
 		}
-		size = math.MinUint64(size, uint64(float64(origInfo.LvSize)*maxPctSize))
+		size = math.MinUint64(size, uint64(float64(origInfo.Size())*maxPctSize))
 	}
 	if value, present := req.Parameters[maxSizeParamKey]; present {
 		maxSize, err := strconv.ParseUint(value, 10, 64)
@@ -723,10 +726,10 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		return nil, err
 	}
 
-	if d.Origin != orig.Lv() {
+	if d.OriginRef().Lv() != orig.Lv() {
 		return nil, status.Errorf(codes.AlreadyExists, "snapshot with the same name %q but different origin already exist", req.GetName())
 	}
-	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(d.LogicalVolume)}, nil
+	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(d.LvmLv())}, nil
 }
 
 func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
@@ -765,9 +768,9 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	// Acquire exclusive lock on orig, or delegate to owner node if already locked
 	// We add a uuid because we don't want this lock to be reentrant.
 	lockId := fmt.Sprintf("DeleteSnapshot(%s,%s)", snap, uuid.New().String())
-	err = cs.volumeLock.LockVolume(ctx, lockVol.VolumeRef, lockId)
+	err = cs.volumeLock.LockVolume(ctx, lockVol, lockId)
 	if status.Code(err) == codes.PermissionDenied {
-		ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, *orig)
+		ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, orig)
 		if err != nil {
 			return nil, status.Errorf(codes.Aborted, "failed to retrieve owner node for locked volume %q: %v", orig, err)
 		}
@@ -779,7 +782,7 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to lock %s: %v", orig, err)
 	}
-	defer cs.tryVolumeUnlock(ctx, lockVol.VolumeRef, lockId)
+	defer cs.tryVolumeUnlock(ctx, lockVol, lockId)
 
 	// Remove snapshot.
 	_, err = cs.lvmctrld.LvRemove(ctx, &pb.LvRemoveRequest{
@@ -792,7 +795,7 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 }
 
 func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	filters := []string{"lv_name=~^" + snapshotLvPrefix}
+	filters := []string{fmt.Sprintf("lv_name=~^%s-%c-", lvmPrefix, volTypeToCode[SnapshotVolType])}
 	if req.GetSnapshotId() != "" {
 		if !volumeIdRe.MatchString(req.GetSnapshotId()) {
 			return &csi.ListSnapshotsResponse{
@@ -859,10 +862,13 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 		i++
 	}
 
-	// Set next page token if any
+	// Set next page token if any.
 	next := ""
 	if s < len(lvs) {
-		vol := NewVolumeRefFromLv(lvs[s])
+		vol, err := NewVolumeInfoFromLv(lvs[s])
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "failed to parse logical volume: %v", err)
+		}
 		next = vol.ID()
 	}
 
@@ -887,7 +893,10 @@ func (cs *controllerServer) tryVolumeUnlock(ctx context.Context, vol VolumeRef, 
 }
 
 func lvToVolume(lv *pb.LogicalVolume) *csi.Volume {
-	vol := NewVolumeInfoFromLv(lv)
+	vol, err := NewVolumeInfoFromLv(lv)
+	if err != nil {
+		panic(fmt.Errorf("unexpected failure while parsing logical volume: %v", err))
+	}
 	return &csi.Volume{
 		VolumeId:      vol.ID(),
 		CapacityBytes: int64(lv.LvSize),
@@ -898,7 +907,10 @@ func lvToVolume(lv *pb.LogicalVolume) *csi.Volume {
 }
 
 func lvToSnapshot(lv *pb.LogicalVolume) *csi.Snapshot {
-	snap := NewVolumeInfoFromLv(lv)
+	snap, err := NewVolumeInfoFromLv(lv)
+	if err != nil {
+		panic(fmt.Errorf("unexpected failure while parsing logical volume: %v", err))
+	}
 	orig := snap.OriginRef()
 	return &csi.Snapshot{
 		SnapshotId:     snap.ID(),

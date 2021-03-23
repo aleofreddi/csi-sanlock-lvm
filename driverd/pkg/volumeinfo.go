@@ -15,32 +15,63 @@
 package driverd
 
 import (
+	"fmt"
+
 	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // A type that holds details of a volume by wrapping a LogicalVolume.
-type VolumeInfo struct {
+type VolumeInfo interface {
+	VolumeRef
+
+	// Get volume size.
+	Size() uint64
+
+	// Retrieve the volume reference.
+	//Ref() VolumeRef
+
+	// Retrieve the origin reference.
+	OriginRef() VolumeRef
+
+	// Get volume tags.
+	Tags() (map[TagKey]string, error)
+
+	// Return the underlying LVM volume.
+	LvmLv() *pb.LogicalVolume
+}
+
+// A type that holds details of a volume by wrapping a LogicalVolume.
+type volumeInfo struct {
 	VolumeRef
 	*pb.LogicalVolume
 }
 
-func NewVolumeInfoFromLv(lv *pb.LogicalVolume) *VolumeInfo {
-	return &VolumeInfo{
-		VolumeRef{lv.LvName, lv.VgName},
+func NewVolumeInfoFromLv(lv *pb.LogicalVolume) (VolumeInfo, error) {
+	vr, err := NewVolumeRefFromLv(lv)
+	if err != nil {
+		return nil, err
+	}
+	return &volumeInfo{
+		vr,
 		lv,
-	}
+	}, nil
 }
 
-func (v *VolumeInfo) OriginRef() *VolumeRef {
-	return &VolumeRef{
-		LvName: v.Origin,
-		VgName: v.LogicalVolume.VgName,
-	}
+func (v *volumeInfo) Ref() VolumeRef {
+	return v.VolumeRef
 }
 
-func (v *VolumeInfo) Tags() (map[TagKey]string, error) {
+func (v *volumeInfo) OriginRef() VolumeRef {
+	vr, err := NewVolumeRefFromVgLv(v.LogicalVolume.VgName, v.Origin)
+	if err != nil {
+		panic(fmt.Errorf("unexpected failure when extracting origin volume: %v", err))
+	}
+	return vr
+}
+
+func (v *volumeInfo) Tags() (map[TagKey]string, error) {
 	tags, err := decodeTags(v.LvTags)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal /* is this the right code? this should be non retryable */, "failed to decode tags for volume %q: %v", v.ID(), err)
@@ -48,6 +79,14 @@ func (v *VolumeInfo) Tags() (map[TagKey]string, error) {
 	return tags, nil
 }
 
-func (v *VolumeInfo) String() string {
+func (v *volumeInfo) Size() uint64 {
+	return v.LvSize
+}
+
+func (v *volumeInfo) String() string {
 	return v.ID()
+}
+
+func (v *volumeInfo) LvmLv() *pb.LogicalVolume {
+	return v.LogicalVolume
 }

@@ -18,88 +18,128 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"regexp"
 	"strings"
 
 	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
 )
 
 const (
-	// Prefix to be used for LVM volumes.
-	volumeLvPrefix = "csi-v-"
-
-	// Prefix to be used for LVM snapshots.
-	snapshotLvPrefix = "csi-s-"
-
-	// Prefix to be used for LVM temporary volumes or snapshots.
-	tempLvPrefix = "csi-t-"
+	lvmPrefix = "csl"
 )
 
-var volTypeToPrefix = map[LogVolType]string{
-	VolumeVolType:    volumeLvPrefix,
-	SnapshotVolType:  snapshotLvPrefix,
-	TemporaryVolType: tempLvPrefix,
+var volTypeToCode = map[LogVolType]uint8{
+	VolumeVolType:    'v',
+	SnapshotVolType:  's',
+	TemporaryVolType: 't',
+	RpcVolType:       'r',
 }
 
-// A type that holds a volume reference. Only the VgName and LvName fields are expected to be set.
-type VolumeRef struct {
-	LvName string
-	VgName string
+var codeToVolType = map[uint8]LogVolType{
+	'v': VolumeVolType,
+	's': SnapshotVolType,
+	't': TemporaryVolType,
+	'r': RpcVolType,
 }
 
-func NewVolumeRefFromVgTypeName(vg string, t LogVolType, name string) *VolumeRef {
+var lvNameRe = regexp.MustCompile("^" + regexp.QuoteMeta(lvmPrefix) + "-(.)-(.+)")
+
+type VolumeRef interface {
+	// Returns the volume id.
+	ID() string
+
+	// Returns the volume group.
+	Vg() string
+
+	// Returns the logical volume.
+	Lv() string
+
+	// Returns volume group '/' logical volume.
+	VgLv() string
+
+	// Returns the device path, that is '/dev/' volume group '/' logical volume.
+	DevPath() string
+
+	String() string
+}
+
+// A type that holds a volume reference. Only the vgName and LvName fields are expected to be set.
+type volumeRef struct {
+	volType LogVolType
+	sha     string
+	vgName  string
+}
+
+func NewVolumeRefFromVgTypeName(vg string, volType LogVolType, name string) *volumeRef {
 	h := sha256.New()
 	h.Write([]byte(name))
-	b64 := base64.StdEncoding.WithPadding(base64.NoPadding).EncodeToString(h.Sum(nil))
-	prefix, ok := volTypeToPrefix[t]
-	if !ok {
-		panic(fmt.Errorf("unexpected volume type %s", t))
-	}
-	// LVM doesn't like the '/' character, replace with '_'
-	lv := prefix + strings.ReplaceAll(b64, "/", "_")
-	return &VolumeRef{
-		LvName: lv,
-		VgName: vg,
+	// LVM doesn't like the '/' character, we replace it with '_'.
+	sha := strings.ReplaceAll(
+		base64.StdEncoding.WithPadding(base64.NoPadding).EncodeToString(h.Sum(nil)),
+		"/", "_")
+	return &volumeRef{
+		volType: volType,
+		sha:     sha,
+		vgName:  vg,
 	}
 }
 
-func NewVolumeRefFromID(volumeID string) (*VolumeRef, error) {
-	tokens := strings.Split(volumeID, "@")
-	if len(tokens) != 2 {
+func NewVolumeRefFromID(volumeID string) (*volumeRef, error) {
+	tokens := strings.Split(volumeID, ":")
+	if len(tokens) != 3 || len(tokens[0]) != 1 {
 		return nil, fmt.Errorf("invalid volume id %q", volumeID)
 	}
-	return &VolumeRef{
-		LvName: tokens[0],
-		VgName: tokens[1],
+	volType, ok := codeToVolType[tokens[0][0]]
+	if !ok {
+		return nil, fmt.Errorf("unexpected volume type %s", tokens[0])
+	}
+	return &volumeRef{
+		volType: volType,
+		vgName:  tokens[1],
+		sha:     tokens[2],
 	}, nil
 }
 
-func NewVolumeRefFromLv(lv *pb.LogicalVolume) *VolumeRef {
-	return &VolumeRef{
-		lv.LvName,
-		lv.VgName,
+func NewVolumeRefFromVgLv(vgName, lvName string) (*volumeRef, error) {
+	tokens := lvNameRe.FindStringSubmatch(lvName)
+	if tokens == nil {
+		return nil, fmt.Errorf("unexpected format for logvol %s", lvName)
 	}
+	volType, ok := codeToVolType[tokens[1][0]]
+	if !ok {
+		return nil, fmt.Errorf("unexpected volume type for logvol %s", lvName)
+	}
+	return &volumeRef{
+		volType,
+		tokens[2],
+		vgName,
+	}, nil
 }
 
-func (v *VolumeRef) ID() string {
-	return fmt.Sprintf("%s@%s", v.LvName, v.VgName)
+func NewVolumeRefFromLv(lv *pb.LogicalVolume) (*volumeRef, error) {
+	return NewVolumeRefFromVgLv(lv.VgName, lv.LvName)
 }
 
-func (v *VolumeRef) Vg() string {
-	return v.VgName
+func (v *volumeRef) ID() string {
+	return fmt.Sprintf("%c:%s:%s", volTypeToCode[v.volType], v.vgName, v.sha)
 }
 
-func (v *VolumeRef) Lv() string {
-	return v.LvName
+func (v *volumeRef) Vg() string {
+	return v.vgName
 }
 
-func (v *VolumeRef) VgLv() string {
-	return fmt.Sprintf("%s/%s", v.VgName, v.LvName)
+func (v *volumeRef) Lv() string {
+	return fmt.Sprintf("%s-%c-%s", lvmPrefix, volTypeToCode[v.volType], v.sha)
 }
 
-func (v *VolumeRef) DevPath() string {
-	return fmt.Sprintf("/dev/%s/%s", v.VgName, v.LvName)
+func (v *volumeRef) VgLv() string {
+	return fmt.Sprintf("%s/%s", v.vgName, v.Lv())
 }
 
-func (v *VolumeRef) String() string {
+func (v *volumeRef) DevPath() string {
+	return fmt.Sprintf("/dev/%s/%s", v.vgName, v.Lv())
+}
+
+func (v *volumeRef) String() string {
 	return v.ID()
 }

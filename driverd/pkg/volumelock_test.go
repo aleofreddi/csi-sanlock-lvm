@@ -55,7 +55,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 					client.EXPECT().
 							LvChange(gomock.Any(),
 								CmpMatcher(t, &proto.LvChangeRequest{
-									Target:   []string{"vg00/volume1"},
+									Target:   []string{"vg00/csl-v-lv1"},
 									Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
 								}, protocmp.Transform()),
 								gomock.Any(),
@@ -72,7 +72,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 			},
 			args{
 				context.Background(),
-				*MustVolumeRefFromID("volume1@vg00"),
+				MustVolumeRefFromID("v:vg00:lv1"),
 				"",
 			},
 			true,
@@ -88,7 +88,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 
 					client.EXPECT().
 							LvChange(gomock.Any(),
-								CmpMatcher(t, &proto.LvChangeRequest{Target: []string{"vg00/volume1"}, Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: []string{"vg00/csl-v-lv1"}, Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -98,13 +98,13 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{
 									VgName: "vg00",
-									LvName: "volume1",
+									LvName: "csl-v-lv1",
 									LvTags: []string{
 										"ignore_invalid_tags_&",
 										"csi-sanlock-lvm.vleo.net/ownerId=4321",
@@ -116,7 +116,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 					client.EXPECT().
 							LvChange(gomock.Any(),
 								CmpMatcher(t, &proto.LvChangeRequest{
-									Target: []string{"vg00/volume1"},
+									Target: []string{"vg00/csl-v-lv1"},
 									AddTag: []string{"csi-sanlock-lvm.vleo.net/ownerId=1234", "csi-sanlock-lvm.vleo.net/ownerNode=node1"},
 									DelTag: []string{"csi-sanlock-lvm.vleo.net/ownerId=4321", "csi-sanlock-lvm.vleo.net/ownerNode=node2"},
 								}, protocmp.Transform()),
@@ -128,7 +128,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 							),
 					client.EXPECT().
 							LvChange(gomock.Any(),
-								CmpMatcher(t, &proto.LvChangeRequest{Target: []string{"vg00/volume1"}, Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_DEACTIVATE}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: []string{"vg00/csl-v-lv1"}, Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_DEACTIVATE}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -143,7 +143,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 			},
 			args{
 				context.Background(),
-				*MustVolumeRefFromID("volume1@vg00"),
+				MustVolumeRefFromID("v:vg00:lv1"),
 				"",
 			},
 			true,
@@ -159,7 +159,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 
 					client.EXPECT().
 							LvChange(gomock.Any(),
-								CmpMatcher(t, &proto.LvChangeRequest{Target: []string{"vg00/volume1"}, Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvChangeRequest{Target: []string{"vg00/csl-v-lv1"}, Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -169,13 +169,13 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{
 									VgName: "vg00",
-									LvName: "volume1",
+									LvName: "csl-v-lv1",
 									LvTags: []string{
 										"ignore_invalid_tags_&",
 										"csi-sanlock-lvm.vleo.net/ownerId=4321",
@@ -187,7 +187,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 					client.EXPECT().
 							LvChange(gomock.Any(),
 								CmpMatcher(t, &proto.LvChangeRequest{
-									Target: []string{"vg00/volume1"},
+									Target: []string{"vg00/csl-v-lv1"},
 									AddTag: []string{"csi-sanlock-lvm.vleo.net/ownerId=1234", "csi-sanlock-lvm.vleo.net/ownerNode=node1"},
 									DelTag: []string{"csi-sanlock-lvm.vleo.net/ownerId=4321", "csi-sanlock-lvm.vleo.net/ownerNode=node2"},
 								}, protocmp.Transform()),
@@ -205,7 +205,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 			},
 			args{
 				context.Background(),
-				*MustVolumeRefFromID("volume1@vg00"),
+				MustVolumeRefFromID("v:vg00:lv1"),
 				"",
 			},
 			false,
@@ -241,7 +241,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 func expectLockerSyncLvs(t *testing.T, client *mock.MockLvmCtrldClient) *gomock.Call {
 	return client.EXPECT().
 			Lvs(gomock.Any(), CmpMatcher(t, &proto.LvsRequest{
-				Select: "lv_name=~^csi-v- && lv_active=active",
+				Select: "lv_name=~^csl-v- && lv_active=active",
 				Sort:   nil,
 				Target: nil,
 			}, protocmp.Transform())).

@@ -62,19 +62,19 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1"},
-									{VgName: "vg1", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv1"},
-									{VgName: "vg2", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv3"},
-									{VgName: "vg2", LvName: "lv4"},
-									{VgName: "vg2", LvName: "lv5"},
-									{VgName: "vg2", LvName: "lv6"},
+									{VgName: "vg1", LvName: "csl-v-lv1"},
+									{VgName: "vg1", LvName: "csl-v-lv2"},
+									{VgName: "vg2", LvName: "csl-v-lv1"},
+									{VgName: "vg2", LvName: "csl-v-lv2"},
+									{VgName: "vg2", LvName: "csl-v-lv3"},
+									{VgName: "vg2", LvName: "csl-v-lv4"},
+									{VgName: "vg2", LvName: "csl-v-lv5"},
+									{VgName: "vg2", LvName: "csl-v-lv6"},
 								}},
 								nil,
 							),
@@ -110,19 +110,19 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1"},
-									{VgName: "vg1", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv1"},
-									{VgName: "vg2", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv3"},
-									{VgName: "vg2", LvName: "lv4"},
-									{VgName: "vg2", LvName: "lv5"},
-									{VgName: "vg2", LvName: "lv6"},
+									{VgName: "vg1", LvName: "csl-v-lv1"},
+									{VgName: "vg1", LvName: "csl-v-lv2"},
+									{VgName: "vg2", LvName: "csl-v-lv1"},
+									{VgName: "vg2", LvName: "csl-v-lv2"},
+									{VgName: "vg2", LvName: "csl-v-lv3"},
+									{VgName: "vg2", LvName: "csl-v-lv4"},
+									{VgName: "vg2", LvName: "csl-v-lv5"},
+									{VgName: "vg2", LvName: "csl-v-lv6"},
 								}},
 								nil,
 							),
@@ -142,11 +142,11 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			},
 			&csi.ListVolumesResponse{
 				Entries: []*csi.ListVolumesResponse_Entry{
-					{Volume: &csi.Volume{VolumeId: "lv1@vg1"}},
-					{Volume: &csi.Volume{VolumeId: "lv2@vg1"}},
-					{Volume: &csi.Volume{VolumeId: "lv1@vg2"}},
+					{Volume: &csi.Volume{VolumeId: "v:vg1:lv1"}},
+					{Volume: &csi.Volume{VolumeId: "v:vg1:lv2"}},
+					{Volume: &csi.Volume{VolumeId: "v:vg2:lv1"}},
 				},
-				NextToken: "lv2@vg2",
+				NextToken: "v:vg2:lv2",
 			},
 			false,
 			codes.OK,
@@ -164,19 +164,19 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1"},
-									{VgName: "vg1", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv1"},
-									{VgName: "vg2", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv3"},
-									{VgName: "vg2", LvName: "lv4"},
-									{VgName: "vg2", LvName: "lv5"},
-									{VgName: "vg2", LvName: "lv6"},
+									{VgName: "vg1", LvName: "csl-v-lv1"},
+									{VgName: "vg1", LvName: "csl-v-lv2"},
+									{VgName: "vg2", LvName: "csl-v-lv1"},
+									{VgName: "vg2", LvName: "csl-v-lv2"},
+									{VgName: "vg2", LvName: "csl-v-lv3"},
+									{VgName: "vg2", LvName: "csl-v-lv4"},
+									{VgName: "vg2", LvName: "csl-v-lv5"},
+									{VgName: "vg2", LvName: "csl-v-lv6"},
 								}},
 								nil,
 							),
@@ -191,17 +191,17 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.ListVolumesRequest{
-					StartingToken: "lv3@vg2",
+					StartingToken: "v:vg2:lv3",
 					MaxEntries:    3,
 				},
 			},
 			&csi.ListVolumesResponse{
 				Entries: []*csi.ListVolumesResponse_Entry{
-					{Volume: &csi.Volume{VolumeId: "lv3@vg2"}},
-					{Volume: &csi.Volume{VolumeId: "lv4@vg2"}},
-					{Volume: &csi.Volume{VolumeId: "lv5@vg2"}},
+					{Volume: &csi.Volume{VolumeId: "v:vg2:lv3"}},
+					{Volume: &csi.Volume{VolumeId: "v:vg2:lv4"}},
+					{Volume: &csi.Volume{VolumeId: "v:vg2:lv5"}},
 				},
-				NextToken: "lv6@vg2",
+				NextToken: "v:vg2:lv6",
 			},
 			false,
 			codes.OK,
@@ -219,19 +219,19 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1"},
-									{VgName: "vg1", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv1"},
-									{VgName: "vg2", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv3"},
-									{VgName: "vg2", LvName: "lv4"},
-									{VgName: "vg2", LvName: "lv5"},
-									{VgName: "vg2", LvName: "lv6"},
+									{VgName: "vg1", LvName: "csl-v-lv1"},
+									{VgName: "vg1", LvName: "csl-v-lv2"},
+									{VgName: "vg2", LvName: "csl-v-lv1"},
+									{VgName: "vg2", LvName: "csl-v-lv2"},
+									{VgName: "vg2", LvName: "csl-v-lv3"},
+									{VgName: "vg2", LvName: "csl-v-lv4"},
+									{VgName: "vg2", LvName: "csl-v-lv5"},
+									{VgName: "vg2", LvName: "csl-v-lv6"},
 								}},
 								nil,
 							),
@@ -246,14 +246,14 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.ListVolumesRequest{
-					StartingToken: "lv5@vg2",
+					StartingToken: "v:vg2:lv5",
 					MaxEntries:    3,
 				},
 			},
 			&csi.ListVolumesResponse{
 				Entries: []*csi.ListVolumesResponse_Entry{
-					{Volume: &csi.Volume{VolumeId: "lv5@vg2"}},
-					{Volume: &csi.Volume{VolumeId: "lv6@vg2"}},
+					{Volume: &csi.Volume{VolumeId: "v:vg2:lv5"}},
+					{Volume: &csi.Volume{VolumeId: "v:vg2:lv6"}},
 				},
 			},
 			false,
@@ -319,19 +319,19 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
+									{VgName: "vg1", LvName: "csl-s-lv1", Origin: "csl-v-lv0"},
+									{VgName: "vg1", LvName: "csl-s-lv2", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv1", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv2", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv3", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv4", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv5", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv6", Origin: "csl-v-lv0"},
 								}},
 								nil,
 							),
@@ -367,19 +367,19 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
+									{VgName: "vg1", LvName: "csl-s-lv1", Origin: "csl-v-lv0"},
+									{VgName: "vg1", LvName: "csl-s-lv2", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv1", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv2", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv3", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv4", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv5", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv6", Origin: "csl-v-lv0"},
 								}},
 								nil,
 							),
@@ -399,11 +399,11 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			},
 			&csi.ListSnapshotsResponse{
 				Entries: []*csi.ListSnapshotsResponse_Entry{
-					{Snapshot: &csi.Snapshot{SnapshotId: "lv1@vg1", SourceVolumeId: "lv0@vg1", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "lv2@vg1", SourceVolumeId: "lv0@vg1", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "lv1@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "s:vg1:lv1", SourceVolumeId: "v:vg1:lv0", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "s:vg1:lv2", SourceVolumeId: "v:vg1:lv0", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "s:vg2:lv1", SourceVolumeId: "v:vg2:lv0", ReadyToUse: true}},
 				},
-				NextToken: "lv2@vg2",
+				NextToken: "s:vg2:lv2",
 			},
 			false,
 			codes.OK,
@@ -421,19 +421,19 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
+									{VgName: "vg1", LvName: "csl-s-lv1", Origin: "csl-v-lv0"},
+									{VgName: "vg1", LvName: "csl-s-lv2", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv1", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv2", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv3", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv4", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv5", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv6", Origin: "csl-v-lv0"},
 								}},
 								nil,
 							),
@@ -448,17 +448,17 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.ListSnapshotsRequest{
-					StartingToken: "lv3@vg2",
+					StartingToken: "s:vg2:lv3",
 					MaxEntries:    3,
 				},
 			},
 			&csi.ListSnapshotsResponse{
 				Entries: []*csi.ListSnapshotsResponse_Entry{
-					{Snapshot: &csi.Snapshot{SnapshotId: "lv3@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "lv4@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "lv5@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "s:vg2:lv3", SourceVolumeId: "v:vg2:lv0", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "s:vg2:lv4", SourceVolumeId: "v:vg2:lv0", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "s:vg2:lv5", SourceVolumeId: "v:vg2:lv0", ReadyToUse: true}},
 				},
-				NextToken: "lv6@vg2",
+				NextToken: "s:vg2:lv6",
 			},
 			false,
 			codes.OK,
@@ -476,19 +476,19 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
 								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
+									{VgName: "vg1", LvName: "csl-s-lv1", Origin: "csl-v-lv0"},
+									{VgName: "vg1", LvName: "csl-s-lv2", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv1", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv2", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv3", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv4", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv5", Origin: "csl-v-lv0"},
+									{VgName: "vg2", LvName: "csl-s-lv6", Origin: "csl-v-lv0"},
 								}},
 								nil,
 							),
@@ -503,14 +503,14 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.ListSnapshotsRequest{
-					StartingToken: "lv5@vg2",
+					StartingToken: "s:vg2:lv5",
 					MaxEntries:    3,
 				},
 			},
 			&csi.ListSnapshotsResponse{
 				Entries: []*csi.ListSnapshotsResponse_Entry{
-					{Snapshot: &csi.Snapshot{SnapshotId: "lv5@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
-					{Snapshot: &csi.Snapshot{SnapshotId: "lv6@vg2", SourceVolumeId: "lv0@vg2", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "s:vg2:lv5", SourceVolumeId: "v:vg2:lv0", ReadyToUse: true}},
+					{Snapshot: &csi.Snapshot{SnapshotId: "s:vg2:lv6", SourceVolumeId: "v:vg2:lv0", ReadyToUse: true}},
 				},
 			},
 			false,

@@ -151,7 +151,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeStageVolumeRequest{
-					VolumeId:          "volume1@vg00",
+					VolumeId:          "v:vg00:lv1",
 					StagingTargetPath: "/staging/path",
 				},
 			},
@@ -177,7 +177,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeStageVolumeRequest{
-					VolumeId:         "volume1@vg00",
+					VolumeId:         "v:vg00:lv1",
 					VolumeCapability: &csi.VolumeCapability{},
 				},
 			},
@@ -197,7 +197,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 					locker.EXPECT().
 							LockVolume(
 								gomock.Any(),
-								*MustVolumeRefFromID("volume1@vg00"),
+								MustVolumeRefFromID("v:vg00:lv1"),
 								"stage",
 							).
 						Return(status.Error(codes.Internal, "internal error")),
@@ -211,7 +211,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeStageVolumeRequest{
-					VolumeId:          "volume1@vg00",
+					VolumeId:          "v:vg00:lv1",
 					StagingTargetPath: "/staging/path",
 					VolumeCapability:  &csi.VolumeCapability{},
 				},
@@ -232,7 +232,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 					locker.EXPECT().
 							LockVolume(
 								gomock.Any(),
-								*MustVolumeRefFromID("volume1@vg00"),
+								MustVolumeRefFromID("v:vg00:lv1"),
 								"stage",
 							).
 						Return(nil),
@@ -246,7 +246,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeStageVolumeRequest{
-					VolumeId:          "volume1@vg00",
+					VolumeId:          "v:vg00:lv1",
 					StagingTargetPath: "/staging/path",
 					VolumeCapability:  &csi.VolumeCapability{},
 				},
@@ -335,7 +335,7 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnstageVolumeRequest{
-					VolumeId: "volume1@vg00",
+					VolumeId: "v:vg00:lv1",
 				},
 			},
 			nil,
@@ -354,7 +354,7 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 					locker.EXPECT().
 							UnlockVolume(
 								gomock.Any(),
-								*MustVolumeRefFromID("volume1@vg00"),
+								MustVolumeRefFromID("v:vg00:lv1"),
 								"stage",
 							).
 							Return(
@@ -370,7 +370,7 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnstageVolumeRequest{
-					VolumeId:          "volume1@vg00",
+					VolumeId:          "v:vg00:lv1",
 					StagingTargetPath: "/staging/path",
 				},
 			},
@@ -390,7 +390,7 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 					locker.EXPECT().
 							UnlockVolume(
 								gomock.Any(),
-								*MustVolumeRefFromID("volume1@vg00"),
+								MustVolumeRefFromID("v:vg00:lv1"),
 								"stage",
 							).
 						Return(nil),
@@ -404,7 +404,7 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnstageVolumeRequest{
-					VolumeId:          "volume1@vg00",
+					VolumeId:          "v:vg00:lv1",
 					StagingTargetPath: "/staging/path",
 				},
 			},
@@ -507,7 +507,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId: "volume1",
+					VolumeId: "lv1",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
 						AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
@@ -536,7 +536,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId: "volume1",
+					VolumeId: "lv1",
 				},
 			},
 			nil,
@@ -561,7 +561,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId: "volume1",
+					VolumeId: "lv1",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Mount{
 							Mount: &csi.VolumeCapability_MountVolume{},
@@ -588,7 +588,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -605,7 +605,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
@@ -629,7 +629,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -646,7 +646,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
@@ -670,7 +670,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -687,7 +687,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
@@ -711,7 +711,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -728,7 +728,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
@@ -752,7 +752,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -772,7 +772,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
@@ -797,7 +797,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -820,7 +820,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
@@ -845,7 +845,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -859,7 +859,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 						Accepts(pkg.BlockAccessType).
 						Return(true),
 					fs.EXPECT().
-						Mount("/dev/vg00/volume1", "/target/path", []string{}).
+						Mount("/dev/vg00/csl-v-lv1", "/target/path", []string{}).
 						Return(nil),
 				)
 				return &fields{
@@ -871,7 +871,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
@@ -896,7 +896,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -911,7 +911,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 						Accepts(pkg.MountAccessType).
 						Return(true),
 					fs.EXPECT().
-						Mount("/dev/vg00/volume1", "/target/path", []string{"ro"}).
+						Mount("/dev/vg00/csl-v-lv1", "/target/path", []string{"ro"}).
 						Return(nil),
 				)
 				return &fields{
@@ -923,7 +923,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
@@ -949,7 +949,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -964,7 +964,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 						Accepts(pkg.MountAccessType).
 						Return(true),
 					fs.EXPECT().
-						Mount("/dev/vg00/volume1", "/target/path", []string{"noatime", "rw"}).
+						Mount("/dev/vg00/csl-v-lv1", "/target/path", []string{"noatime", "rw"}).
 						Return(nil),
 				)
 				return &fields{
@@ -976,7 +976,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodePublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Mount{
@@ -1074,7 +1074,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId: "volume1",
+					VolumeId: "lv1",
 				},
 			},
 			nil,
@@ -1093,7 +1093,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -1110,7 +1110,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 				},
 			},
@@ -1130,7 +1130,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -1147,7 +1147,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 				},
 			},
@@ -1167,7 +1167,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -1184,7 +1184,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 				},
 			},
@@ -1204,7 +1204,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -1221,7 +1221,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 				},
 			},
@@ -1241,7 +1241,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -1258,7 +1258,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 				},
 			},
@@ -1278,7 +1278,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -1298,7 +1298,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 				},
 			},
@@ -1319,7 +1319,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/csl-v-lv1"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -1342,7 +1342,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 			args{
 				context.Background(),
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volume1@vg00",
+					VolumeId:   "v:vg00:lv1",
 					TargetPath: "/target/path",
 				},
 			},
@@ -1377,7 +1377,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 	}
 }
 
-func MustVolumeRefFromID(volumeID string) *pkg.VolumeRef {
+func MustVolumeRefFromID(volumeID string) pkg.VolumeRef {
 	id, err := pkg.NewVolumeRefFromID(volumeID)
 	if err != nil {
 		panic(err)

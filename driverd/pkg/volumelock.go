@@ -150,7 +150,7 @@ func (vl *volumeLocker) UnlockVolume(ctx context.Context, vol VolumeRef, op stri
 // Retrieve the owner node for a given volume.
 func (vl *volumeLocker) GetOwner(ctx context.Context, ref VolumeRef) (diskrpc.MailBoxID, string, error) {
 	// Fetch the volume and get its tags.
-	vol, err := vl.fetch(ctx, &ref)
+	vol, err := vl.fetch(ctx, ref)
 	if err != nil {
 		return 0, "", status.Errorf(codes.Internal, "failed to list logical volume %s: %v", vol, err)
 	}
@@ -176,7 +176,7 @@ func (vl *volumeLocker) GetOwner(ctx context.Context, ref VolumeRef) (diskrpc.Ma
 // Calling this function with a nil ownerID will cause it to remove all owner tags.
 func (vl *volumeLocker) setOwner(ctx context.Context, ref VolumeRef, ownerID *uint16, ownerNode *string) error {
 	// Fetch the volume and get its tags
-	vol, err := vl.fetch(ctx, &ref)
+	vol, err := vl.fetch(ctx, ref)
 	if err != nil {
 		return err
 	}
@@ -217,19 +217,21 @@ func (vl *volumeLocker) setOwner(ctx context.Context, ref VolumeRef, ownerID *ui
 func (vl *volumeLocker) sync(ctx context.Context) error {
 	vl.mutex.Lock()
 	defer vl.mutex.Unlock()
-
 	klog.Infof("Syncing LVM status")
 
 	// Find all active volumes.
 	lvs, err := vl.lvmctrld.Lvs(ctx, &pb.LvsRequest{
-		Select: fmt.Sprintf("lv_name=~^%s && lv_active=active", volumeLvPrefix),
+		Select: fmt.Sprintf("lv_name=~^%s-%c- && lv_active=active", lvmPrefix, volTypeToCode[VolumeVolType]),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to list logical volumes: %v", err)
 	}
 
 	for _, lv := range lvs.Lvs {
-		vol := NewVolumeRefFromLv(lv)
+		vol, err := NewVolumeRefFromLv(lv)
+		if err != nil {
+			return fmt.Errorf("failed to parse logical volume %s/%s: %v", lv.VgName, lv.LvName, err)
+		}
 		// Try to deactivate volume if it is not opened
 		if lv.LvDeviceOpen != pb.LvDeviceOpen_LV_DEVICE_OPEN_OPEN {
 			_, err = vl.lvmctrld.LvChange(ctx, &pb.LvChangeRequest{
@@ -241,7 +243,7 @@ func (vl *volumeLocker) sync(ctx context.Context) error {
 			}
 			// Try to remove owner tag. We could race here and have another host lock the
 			// volume. In such case, the update will fail with permission denied.
-			err := vl.setOwner(ctx, *vol, nil, nil)
+			err := vl.setOwner(ctx, vol, nil, nil)
 			if err != nil && status.Code(err) != codes.PermissionDenied {
 				klog.Warningf("failed to update tags on volume %q: %v", *vol, err)
 			}

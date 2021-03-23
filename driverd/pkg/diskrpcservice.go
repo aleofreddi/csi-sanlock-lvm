@@ -84,17 +84,21 @@ func NewDiskRpcService(lvmctrld pb.LvmCtrldClient, locker VolumeLocker) (*DiskRp
 	// Find rpc lock and data logical volumes.
 	ctx := context.Background()
 	lvs, err := lvmctrld.Lvs(ctx, &pb.LvsRequest{
-		Select: fmt.Sprintf("lv_tags=%s || lv_tags=%s",
+		Select: fmt.Sprintf("lv_name=~^%s-%c- && (lv_tags=%s || lv_tags=%s)",
+			lvmPrefix, volTypeToCode[RpcVolType],
 			encodeTagKV(rpcRoleTagKey, string(rpcRoleData)),
 			encodeTagKV(rpcRoleTagKey, string(rpcRoleLock))),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list logical volumes: %v", err)
 	}
-	var data *VolumeInfo
-	var lock *VolumeInfo
+	var data VolumeInfo
+	var lock VolumeInfo
 	for _, lv := range lvs.Lvs {
-		lvRef := NewVolumeInfoFromLv(lv)
+		lvRef, err := NewVolumeInfoFromLv(lv)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode volume information for volume: %v", err)
+		}
 		tags, err := lvRef.Tags()
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode tags for volume %q: %v", lvRef, err)
@@ -131,7 +135,7 @@ func NewDiskRpcService(lvmctrld pb.LvmCtrldClient, locker VolumeLocker) (*DiskRp
 		&volumeLockerAdapter{
 			ctx:    ctx,
 			locker: locker,
-			vol:    lock.VolumeRef,
+			vol:    lock,
 		},
 		data.DevPath(),
 	)

@@ -65,8 +65,8 @@ pvcreate -f "$device" || die Failed to create physical device
 vgcreate -s $((1024*1024))b vg_csi_sanity_$$ "$device" || die Failed to create volume group
 rollback="echo Bringing down vg_csi_sanity_$$; vgchange -a n vg_csi_sanity_$$; $rollback"
 
-lvcreate -L 512b -n rpc-lock --addtag csi-sanlock-lvm.vleo.net/rpcRole=lock vg_csi_sanity_$$ || die Failed to create rpc lock logical volume
-lvcreate -L 8m -n rpc-data --addtag csi-sanlock-lvm.vleo.net/rpcRole=data vg_csi_sanity_$$ || die Failed to create rpc data logical volume
+lvcreate -L 512b -n csl-r-lock --addtag csi-sanlock-lvm.vleo.net/rpcRole=lock vg_csi_sanity_$$ || die Failed to create rpc lock logical volume
+lvcreate -L 8m -n csl-r-data --addtag csi-sanlock-lvm.vleo.net/rpcRole=data vg_csi_sanity_$$ || die Failed to create rpc data logical volume
 
 lvmctrld_sock="unix://$tmpdir/lvmctrld.sock"
 "$rootdir"/lvmctrld/bin/lvmctrld --listen "$lvmctrld_sock" --no-lock -v "$verbosity" &
