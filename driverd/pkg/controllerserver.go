@@ -25,7 +25,7 @@ import (
 
 	diskrpc "github.com/aleofreddi/csi-sanlock-lvm/diskrpc/pkg"
 	pb "github.com/aleofreddi/csi-sanlock-lvm/proto"
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csipb "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
 	"github.com/pkg/math"
 	"golang.org/x/net/context"
@@ -60,15 +60,13 @@ const (
 	BlockAccessFsName = "$raw" // the $ prefix is to avoid colliding with a real filesystem name.
 )
 
-var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct{}{
-	csi.ControllerServiceCapability_RPC_CLONE_VOLUME:           {},
-	csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: {},
-	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   {},
-	csi.ControllerServiceCapability_RPC_EXPAND_VOLUME:          {},
-	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS:         {},
-	csi.ControllerServiceCapability_RPC_LIST_VOLUMES:           {},
-	// FIXME: check if it's worth adding csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES
-	// See https://github.com/container-storage-interface/spec/blob/master/spec.md#listvolumes
+var controllerCapabilities = map[csipb.ControllerServiceCapability_RPC_Type]struct{}{
+	csipb.ControllerServiceCapability_RPC_CLONE_VOLUME:           {},
+	csipb.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: {},
+	csipb.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   {},
+	csipb.ControllerServiceCapability_RPC_EXPAND_VOLUME:          {},
+	csipb.ControllerServiceCapability_RPC_LIST_SNAPSHOTS:         {},
+	csipb.ControllerServiceCapability_RPC_LIST_VOLUMES:           {},
 }
 
 type controllerServer struct {
@@ -95,23 +93,23 @@ func NewControllerServer(lvmctrld pb.LvmCtrldClient, volumeLock VolumeLocker, di
 	return cs, nil
 }
 
-func (cs *controllerServer) ControllerGetCapabilities(_ context.Context, _ *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	ctrlCpbs := make([]*csi.ControllerServiceCapability, 0, len(controllerCapabilities))
+func (cs *controllerServer) ControllerGetCapabilities(_ context.Context, _ *csipb.ControllerGetCapabilitiesRequest) (*csipb.ControllerGetCapabilitiesResponse, error) {
+	ctrlCpbs := make([]*csipb.ControllerServiceCapability, 0, len(controllerCapabilities))
 	for cpb, _ := range controllerCapabilities {
-		ctrlCpbs = append(ctrlCpbs, &csi.ControllerServiceCapability{
-			Type: &csi.ControllerServiceCapability_Rpc{
-				Rpc: &csi.ControllerServiceCapability_RPC{
+		ctrlCpbs = append(ctrlCpbs, &csipb.ControllerServiceCapability{
+			Type: &csipb.ControllerServiceCapability_Rpc{
+				Rpc: &csipb.ControllerServiceCapability_RPC{
 					Type: cpb,
 				},
 			},
 		})
 	}
-	return &csi.ControllerGetCapabilitiesResponse{
+	return &csipb.ControllerGetCapabilitiesResponse{
 		Capabilities: ctrlCpbs,
 	}, nil
 }
 
-func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+func (cs *controllerServer) CreateVolume(ctx context.Context, req *csipb.CreateVolumeRequest) (*csipb.CreateVolumeResponse, error) {
 	// Check arguments
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume name")
@@ -120,11 +118,11 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "missing volume capabilities")
 	}
 
-	// Parse capabilities
-	var accessMode *csi.VolumeCapability_AccessMode_Mode
+	// Parse capabilities.
+	var accessMode *csipb.VolumeCapability_AccessMode_Mode
 	var fsName string
 	for _, cpb := range req.GetVolumeCapabilities() {
-		var capAccessMode *csi.VolumeCapability_AccessMode_Mode
+		var capAccessMode *csipb.VolumeCapability_AccessMode_Mode
 		if cpb.GetAccessMode() != nil {
 			v := cpb.GetAccessMode().GetMode()
 			capAccessMode = &v
@@ -151,7 +149,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if accessMode == nil {
 		return nil, status.Error(codes.InvalidArgument, "missing access mode")
 	}
-	if *accessMode != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER && *accessMode != csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY {
+	if *accessMode != csipb.VolumeCapability_AccessMode_SINGLE_NODE_WRITER && *accessMode != csipb.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY {
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported access mode %s", *accessMode)
 	}
 	if fsName == "" {
@@ -252,7 +250,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}()
 
-	// Create a temporary snapshot from src volume, if specified
+	// Create a temporary snapshot from src volume, if specified.
 	var dataVol VolumeRef
 	if lockVol != nil {
 		// Try to acquire exclusive lock on orig, or delegate to owner node if already locked.
@@ -266,7 +264,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 				return nil, err
 			}
 			klog.V(3).Infof("Delegating CreateVolume(%s) to node %s because it owns %s", vol, ownerNode, lockVol)
-			res := csi.CreateVolumeResponse{}
+			res := csipb.CreateVolumeResponse{}
 			err = cs.diskRpc.Invoke(ctx, ownerId, controllerServerDiskRPCID, "CreateVolume", req, &res)
 			klog.V(5).Infof("CreateVolume(%s) on node %s returned (%+v, %v)", vol, ownerNode, res, err)
 			return &res, err
@@ -329,7 +327,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			if uint64(req.GetCapacityRange().GetRequiredBytes()) > d.Size() {
 				return nil, status.Errorf(codes.AlreadyExists, "volume with the same name but with different size already exist")
 			}
-			return &csi.CreateVolumeResponse{
+			return &csipb.CreateVolumeResponse{
 				Volume: lvToVolume(d.LvmLv()),
 			}, nil
 		}
@@ -396,25 +394,24 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	delete(cleanupVols, vol.VgLv())
-	return &csi.CreateVolumeResponse{
-		Volume: &csi.Volume{
+	return &csipb.CreateVolumeResponse{
+		Volume: &csipb.Volume{
 			VolumeId:      vol.ID(),
 			CapacityBytes: req.GetCapacityRange().GetRequiredBytes(),
 			VolumeContext: req.GetParameters(),
 			ContentSource: req.GetVolumeContentSource(),
-			//AccessibleTopology: (use vgname here)
 		},
 	}, nil
 }
 
-func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csipb.DeleteVolumeRequest) (*csipb.DeleteVolumeResponse, error) {
 	// Check arguments
 	volumeId := req.GetVolumeId()
 	if volumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume id")
 	}
 	if !volumeIdRe.MatchString(volumeId) {
-		return &csi.DeleteVolumeResponse{}, nil
+		return &csipb.DeleteVolumeResponse{}, nil
 	}
 
 	vol, err := NewVolumeRefFromID(volumeId)
@@ -428,7 +425,7 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		Target: []string{vol.VgLv()},
 	})
 	if status.Code(err) == codes.NotFound {
-		return &csi.DeleteVolumeResponse{}, nil
+		return &csipb.DeleteVolumeResponse{}, nil
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete volume %s: %v", vol, err)
 	}
@@ -444,10 +441,10 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	if status.Code(err) != codes.NotFound {
 		return nil, status.Errorf(codes.Internal, "failed to list volume %s: %v", vol, err)
 	}
-	return &csi.DeleteVolumeResponse{}, nil
+	return &csipb.DeleteVolumeResponse{}, nil
 }
 
-func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csipb.ValidateVolumeCapabilitiesRequest) (*csipb.ValidateVolumeCapabilitiesResponse, error) {
 	// Check arguments
 	volumeId := req.GetVolumeId()
 	if volumeId == "" {
@@ -476,29 +473,29 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 	}
 	// Validate capabilities.
 	valid := true
-	var validCaps []*csi.VolumeCapability
+	var validCaps []*csipb.VolumeCapability
 	for _, cpb := range req.GetVolumeCapabilities() {
-		validCap := &csi.VolumeCapability{}
+		validCap := &csipb.VolumeCapability{}
 		if cpb.GetAccessMode() != nil {
 			accessMode := cpb.GetAccessMode().GetMode()
 			valid = valid &&
-					(accessMode == csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER ||
-							accessMode == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY)
-			validCap.AccessMode = &csi.VolumeCapability_AccessMode{
+					(accessMode == csipb.VolumeCapability_AccessMode_SINGLE_NODE_WRITER ||
+							accessMode == csipb.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY)
+			validCap.AccessMode = &csipb.VolumeCapability_AccessMode{
 				Mode: accessMode,
 			}
 		}
 		if m := cpb.GetMount(); m != nil {
 			valid = valid && tags[fsTagKey] == m.GetFsType()
-			validCap.AccessType = &csi.VolumeCapability_Mount{
-				Mount: &csi.VolumeCapability_MountVolume{
+			validCap.AccessType = &csipb.VolumeCapability_Mount{
+				Mount: &csipb.VolumeCapability_MountVolume{
 					FsType: tags[fsTagKey],
 				},
 			}
 		} else if cpb.GetBlock() != nil {
 			valid = valid && tags[fsTagKey] == BlockAccessFsName
-			validCap.AccessType = &csi.VolumeCapability_Block{
-				Block: &csi.VolumeCapability_BlockVolume{
+			validCap.AccessType = &csipb.VolumeCapability_Block{
+				Block: &csipb.VolumeCapability_BlockVolume{
 				},
 			}
 		}
@@ -506,17 +503,17 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 	}
 
 	if !valid {
-		return &csi.ValidateVolumeCapabilitiesResponse{
+		return &csipb.ValidateVolumeCapabilitiesResponse{
 		}, nil
 	}
-	return &csi.ValidateVolumeCapabilitiesResponse{
-		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+	return &csipb.ValidateVolumeCapabilitiesResponse{
+		Confirmed: &csipb.ValidateVolumeCapabilitiesResponse_Confirmed{
 			VolumeCapabilities: validCaps,
 		},
 	}, nil
 }
 
-func (cs *controllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
+func (cs *controllerServer) GetCapacity(ctx context.Context, req *csipb.GetCapacityRequest) (*csipb.GetCapacityResponse, error) {
 	filters := make([]string, 0)
 	vgName, vgFilter := req.Parameters[vgParamKey]
 	if vgFilter {
@@ -538,12 +535,12 @@ func (cs *controllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		free += int64(vg.VgFree)
 	}
 
-	return &csi.GetCapacityResponse{
+	return &csipb.GetCapacityResponse{
 		AvailableCapacity: free,
 	}, nil
 }
 
-func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csipb.ControllerExpandVolumeRequest) (*csipb.ControllerExpandVolumeResponse, error) {
 	// Check arguments
 	volumeId := req.GetVolumeId()
 	if volumeId == "" {
@@ -571,15 +568,15 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	// matches the volume size, in case the CO looses state.
 	requiredBytes := uint64(req.CapacityRange.RequiredBytes)
 	if d.Size() >= requiredBytes {
-		return &csi.ControllerExpandVolumeResponse{CapacityBytes: int64(d.Size()), NodeExpansionRequired: true}, nil
+		return &csipb.ControllerExpandVolumeResponse{CapacityBytes: int64(d.Size()), NodeExpansionRequired: true}, nil
 	}
-	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         int64(requiredBytes), //int64(lv.LvSize),
+	return &csipb.ControllerExpandVolumeResponse{
+		CapacityBytes:         int64(requiredBytes),
 		NodeExpansionRequired: true,
 	}, nil
 }
 
-func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
+func (cs *controllerServer) ListVolumes(ctx context.Context, req *csipb.ListVolumesRequest) (*csipb.ListVolumesResponse, error) {
 	// List volumes
 	volumes, err := cs.lvmctrld.Lvs(ctx, &pb.LvsRequest{
 		Select: fmt.Sprintf("lv_name=~^%s-%c-", lvmPrefix, volTypeToCode[VolumeVolType]),
@@ -614,9 +611,11 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	}
 
 	// Map entries.
-	entries := make([]*csi.ListVolumesResponse_Entry, s-i)
+	entries := make([]*csipb.ListVolumesResponse_Entry, s-i)
 	for j := 0; i < s; {
-		entries[j] = &csi.ListVolumesResponse_Entry{Volume: lvToVolume(lvs[i])}
+		entries[j] = &csipb.ListVolumesResponse_Entry{
+			Volume: lvToVolume(lvs[i]),
+		}
 		j++
 		i++
 	}
@@ -631,13 +630,13 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 		next = vol.ID()
 	}
 
-	return &csi.ListVolumesResponse{
+	return &csipb.ListVolumesResponse{
 		Entries:   entries,
 		NextToken: next,
 	}, nil
 }
 
-func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csipb.CreateSnapshotRequest) (*csipb.CreateSnapshotResponse, error) {
 	// Check arguments.
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing snapshot name")
@@ -663,7 +662,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 			return nil, err
 		}
 		klog.V(3).Infof("Delegating CreateSnapshot(%s) to node %s because it owns %s", snap, ownerNode, orig)
-		res := csi.CreateSnapshotResponse{}
+		res := csipb.CreateSnapshotResponse{}
 		err = cs.diskRpc.Invoke(ctx, ownerId, controllerServerDiskRPCID, "CreateSnapshot", req, &res)
 		klog.V(5).Infof("CreateSnapshot(%s) on node %s returned (%+v, %v)", snap, ownerNode, res, err)
 		return &res, err
@@ -729,17 +728,17 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	if d.OriginRef().Lv() != orig.Lv() {
 		return nil, status.Errorf(codes.AlreadyExists, "snapshot with the same name %q but different origin already exist", req.GetName())
 	}
-	return &csi.CreateSnapshotResponse{Snapshot: lvToSnapshot(d.LvmLv())}, nil
+	return &csipb.CreateSnapshotResponse{Snapshot: lvToSnapshot(d.LvmLv())}, nil
 }
 
-func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csipb.DeleteSnapshotRequest) (*csipb.DeleteSnapshotResponse, error) {
 	// Check arguments
 	volumeId := req.GetSnapshotId()
 	if volumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing snapshot id")
 	}
 	if !volumeIdRe.MatchString(volumeId) {
-		return &csi.DeleteSnapshotResponse{}, nil
+		return &csipb.DeleteSnapshotResponse{}, nil
 	}
 
 	// Retrieve snapshot and its origin
@@ -750,7 +749,7 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	snap, err := cs.fetch(ctx, snapRef)
 	if status.Code(err) == codes.NotFound {
 		// Snapshot not found: return success.
-		return &csi.DeleteSnapshotResponse{}, nil
+		return &csipb.DeleteSnapshotResponse{}, nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -759,7 +758,7 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	if status.Code(err) == codes.NotFound {
 		// Snapshot origin not found: return success - if origin disappeared, it is
 		// safe to assume that its dependent snapshot got removed.
-		return &csi.DeleteSnapshotResponse{}, nil
+		return &csipb.DeleteSnapshotResponse{}, nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -775,7 +774,7 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 			return nil, status.Errorf(codes.Aborted, "failed to retrieve owner node for locked volume %q: %v", orig, err)
 		}
 		klog.V(3).Infof("Delegating CreateSnapshot(%s) to node %s because it owns %s", snap, ownerNode, orig)
-		res := csi.DeleteSnapshotResponse{}
+		res := csipb.DeleteSnapshotResponse{}
 		err = cs.diskRpc.Invoke(ctx, ownerId, controllerServerDiskRPCID, "DeleteSnapshot", req, &res)
 		klog.V(5).Infof("DeleteSnapshot(%s) on node %s returned (%+v, %v)", snap, ownerNode, res, err)
 		return &res, err
@@ -791,14 +790,14 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, status.Errorf(codes.Internal, "failed to delete snapshot %s: %v", volumeId, err)
 	}
-	return &csi.DeleteSnapshotResponse{}, nil
+	return &csipb.DeleteSnapshotResponse{}, nil
 }
 
-func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csipb.ListSnapshotsRequest) (*csipb.ListSnapshotsResponse, error) {
 	filters := []string{fmt.Sprintf("lv_name=~^%s-%c-", lvmPrefix, volTypeToCode[SnapshotVolType])}
 	if req.GetSnapshotId() != "" {
 		if !volumeIdRe.MatchString(req.GetSnapshotId()) {
-			return &csi.ListSnapshotsResponse{
+			return &csipb.ListSnapshotsResponse{
 				Entries: nil,
 			}, nil
 		}
@@ -810,7 +809,7 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 	}
 	if req.GetSourceVolumeId() != "" {
 		if !volumeIdRe.MatchString(req.GetSourceVolumeId()) {
-			return &csi.ListSnapshotsResponse{
+			return &csipb.ListSnapshotsResponse{
 				Entries: nil,
 			}, nil
 		}
@@ -855,9 +854,9 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 	}
 
 	// Map entries
-	entries := make([]*csi.ListSnapshotsResponse_Entry, s-i)
+	entries := make([]*csipb.ListSnapshotsResponse_Entry, s-i)
 	for j := 0; i < s; {
-		entries[j] = &csi.ListSnapshotsResponse_Entry{Snapshot: lvToSnapshot(lvs[i])}
+		entries[j] = &csipb.ListSnapshotsResponse_Entry{Snapshot: lvToSnapshot(lvs[i])}
 		j++
 		i++
 	}
@@ -872,17 +871,17 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 		next = vol.ID()
 	}
 
-	return &csi.ListSnapshotsResponse{
+	return &csipb.ListSnapshotsResponse{
 		Entries:   entries,
 		NextToken: next,
 	}, nil
 }
 
-func (cs *controllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+func (cs *controllerServer) ControllerPublishVolume(ctx context.Context, req *csipb.ControllerPublishVolumeRequest) (*csipb.ControllerPublishVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "not implemented")
 }
 
-func (cs *controllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+func (cs *controllerServer) ControllerUnpublishVolume(ctx context.Context, req *csipb.ControllerUnpublishVolumeRequest) (*csipb.ControllerUnpublishVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "not implemented")
 }
 
@@ -892,27 +891,56 @@ func (cs *controllerServer) tryVolumeUnlock(ctx context.Context, vol VolumeRef, 
 	}
 }
 
-func lvToVolume(lv *pb.LogicalVolume) *csi.Volume {
+func lvToVolume(lv *pb.LogicalVolume) *csipb.Volume {
 	vol, err := NewVolumeInfoFromLv(lv)
 	if err != nil {
 		panic(fmt.Errorf("unexpected failure while parsing logical volume: %v", err))
 	}
-	return &csi.Volume{
+	var src *csipb.VolumeContentSource
+	tags, err := vol.Tags()
+	if err != nil {
+		panic(fmt.Errorf("unexpected failure while parsing tags for logical volume: %v", err))
+	}
+	srcID, ok := tags[sourceTagKey]
+	if ok {
+		srcVol, err := NewVolumeRefFromID(srcID)
+		if err != nil {
+			panic(fmt.Errorf("unexpected failure while parsing origin logical volume: %v", err))
+		}
+		if srcVol.volType == SnapshotVolType {
+			src = &csipb.VolumeContentSource{
+				Type: &csipb.VolumeContentSource_Snapshot{
+					Snapshot: &csipb.VolumeContentSource_SnapshotSource{
+						SnapshotId: srcVol.ID(),
+					},
+				},
+			}
+		} else if srcVol.volType == VolumeVolType {
+			src = &csipb.VolumeContentSource{
+				Type: &csipb.VolumeContentSource_Volume{
+					Volume: &csipb.VolumeContentSource_VolumeSource{
+						VolumeId: srcVol.ID(),
+					},
+				},
+			}
+		} else {
+			klog.Warningf("unexpected origin volume %q", srcVol)
+		}
+	}
+	return &csipb.Volume{
 		VolumeId:      vol.ID(),
 		CapacityBytes: int64(lv.LvSize),
-		//VolumeContext:        nil,
-		//ContentSource:        nil,
-		//AccessibleTopology:   nil,
+		ContentSource: src,
 	}
 }
 
-func lvToSnapshot(lv *pb.LogicalVolume) *csi.Snapshot {
+func lvToSnapshot(lv *pb.LogicalVolume) *csipb.Snapshot {
 	snap, err := NewVolumeInfoFromLv(lv)
 	if err != nil {
 		panic(fmt.Errorf("unexpected failure while parsing logical volume: %v", err))
 	}
 	orig := snap.OriginRef()
-	return &csi.Snapshot{
+	return &csipb.Snapshot{
 		SnapshotId:     snap.ID(),
 		SourceVolumeId: orig.ID(),
 		ReadyToUse:     true,

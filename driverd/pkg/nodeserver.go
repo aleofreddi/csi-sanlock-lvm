@@ -25,8 +25,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const topologyKeyNode = "csi-sanlock-lvm/topology"
-
 var nodeCapabilities = map[csi.NodeServiceCapability_RPC_Type]struct{}{
 	csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME: {},
 	csi.NodeServiceCapability_RPC_EXPAND_VOLUME:        {},
@@ -55,12 +53,8 @@ func NewNodeServer(lvmctrld pb.LvmCtrldClient, volumeLock VolumeLocker, fsRegist
 
 func (ns *nodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	id := strconv.Itoa(int(ns.nodeID))
-	topology := &csi.Topology{
-		Segments: map[string]string{topologyKeyNode: id},
-	}
 	return &csi.NodeGetInfoResponse{
-		NodeId:             id,
-		AccessibleTopology: topology,
+		NodeId: id,
 	}, nil
 }
 
@@ -181,7 +175,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
 	}
 
-	// Unmount
+	// Unmount the filesystem.
 	err = fs.Umount(req.GetTargetPath())
 	if err != nil {
 		return nil, err
