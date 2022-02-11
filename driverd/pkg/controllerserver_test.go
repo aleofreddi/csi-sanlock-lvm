@@ -62,7 +62,7 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -110,7 +110,7 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -164,7 +164,7 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -219,7 +219,7 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -319,7 +319,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -367,7 +367,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -421,7 +421,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(
@@ -476,7 +476,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					client.EXPECT().
 							Lvs(
 								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csi-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
 								gomock.Any(),
 							).
 							Return(

@@ -72,15 +72,15 @@ volumes:
 # Adjust your devices before running this!
 vgcreate --shared vg01 [/dev/device1 ... /dev/deviceN]
 
-# Create the csi-rpc-data logical volume.
+# Create the csl-rpc-data logical volume.
 lvcreate -L 8m -n csi-rpc-data \
-  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=data vg01 &&
-  lvchange -a n vg01/csi-rpc-data
+  --add-tag csl-sanlock-lvm.vleo.net/rpcRole=data vg01 &&
+  lvchange -a n vg01/csl-rpc-data
 
-# Create the csi-rpc-lock logical volume.
-lvcreate -L 512b -n csi-rpc-lock \
+# Create the csl-rpc-lock logical volume.
+lvcreate -L 512b -n csl-rpc-lock \
   --add-tag csi-sanlock-lvm.vleo.net/rpcRole=lock vg01 &&
-  lvchange -a n vg01/csi-rpc-lock
+  lvchange -a n vg01/csl-rpc-lock
 
 # Initialization complete, terminate the pod successfully.
 exit 0

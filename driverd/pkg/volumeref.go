@@ -25,13 +25,13 @@ import (
 
 const (
 	// Prefix to be used for LVM volumes.
-	volumeLvPrefix = "csi-v-"
+	volumeLvPrefix = "csl-v-"
 
 	// Prefix to be used for LVM snapshots.
-	snapshotLvPrefix = "csi-s-"
+	snapshotLvPrefix = "csl-s-"
 
 	// Prefix to be used for LVM temporary volumes or snapshots.
-	tempLvPrefix = "csi-t-"
+	tempLvPrefix = "csl-t-"
 )
 
 var volTypeToPrefix = map[LogVolType]string{
