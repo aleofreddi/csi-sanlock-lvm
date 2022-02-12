@@ -34,4 +34,3 @@ resources:
   - rbac-snapshot-controller.url.yaml
   - rbac-snapshotter.url.yaml
   - setup-snapshot-controller.url.yaml
-  - csi-sanlock-lvm-networkpolicy.var.yaml
