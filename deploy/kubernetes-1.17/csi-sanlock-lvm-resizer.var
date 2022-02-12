@@ -54,7 +54,7 @@ spec:
       serviceAccountName: csi-resizer
       containers:
         - name: csi-resizer
-          image: quay.io/k8scsi/csi-resizer:v0.3.0
+          image: k8s.gcr.io/sig-storage/csi-resizer:$EXTERNAL_RESIZER_VERSION
           args:
             - -v=5
             - -csi-address=/csi/csi.sock

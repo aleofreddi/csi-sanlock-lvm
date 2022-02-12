@@ -6,10 +6,10 @@ include ../../common.mk
 MANIFEST=\
 ./crd-snapshot.storage.k8s.io_volumesnapshotclasses.url.yaml ./crd-snapshot.storage.k8s.io_volumesnapshotcontents.url.yaml ./crd-snapshot.storage.k8s.io_volumesnapshots.url.yaml ./csi-sanlock-lvm-attacher.var.yaml ./csi-sanlock-lvm-driverinfo.var.yaml ./csi-sanlock-lvm-init.var.yaml ./csi-sanlock-lvm-plugin.var.yaml ./csi-sanlock-lvm-provisioner.var.yaml ./csi-sanlock-lvm-resizer.var.yaml ./csi-sanlock-lvm-snapshotter.var.yaml ./csi-sanlock-lvm-socat.var.yaml ./rbac-attacher.url.yaml ./rbac-provisioner.url.yaml ./rbac-resizer.url.yaml ./rbac-snapshot-controller.url.yaml ./rbac-snapshotter.url.yaml ./setup-snapshot-controller.url.yaml 
 
-EXTERNAL_SNAPSHOTTER_VERSION=v4.0.1
-EXTERNAL_ATTACHER_VERSION=v3.4.0
-EXTERNAL_PROVISIONER_VERSION=v2.2.2
-EXTERNAL_RESIZER_VERSION=v1.4.0
+export EXTERNAL_SNAPSHOTTER_VERSION=v4.0.1
+export EXTERNAL_ATTACHER_VERSION=v3.4.0
+export EXTERNAL_PROVISIONER_VERSION=v2.2.2
+export EXTERNAL_RESIZER_VERSION=v1.4.0
 
 all: build
 

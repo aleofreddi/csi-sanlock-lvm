@@ -54,7 +54,7 @@ spec:
       serviceAccount: csi-snapshotter
       containers:
         - name: csi-snapshotter
-          image: quay.io/k8scsi/csi-snapshotter:v2.0.1
+          image: gcr.io/k8s-staging-sig-storage/csi-snapshotter:$EXTERNAL_SNAPSHOTTER_VERSION
           imagePullPolicy: IfNotPresent
           args:
             - -v=5
