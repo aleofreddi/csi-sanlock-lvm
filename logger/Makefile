@@ -32,4 +32,4 @@ test: go.dep $(MOCK) $(PROTO) $(SRC) $(TEST)
 
 build-image: ;
 
-push-image:	;
+push-image: ;

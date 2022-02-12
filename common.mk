@@ -7,6 +7,13 @@ export VERSION
 COMMIT?=$(shell git rev-parse --short HEAD)
 export COMMIT
 
+ifeq ($(VERSION), latest)
+IMAGE_PULL_POLICY=Always
+else
+IMAGE_PULL_POLICY=IfNotPresent
+endif
+export IMAGE_PULL_POLICY
+
 %.pb.go: %.proto
 	protoc --go_out=plugins=grpc:. --go_opt=paths=source_relative $<
 
