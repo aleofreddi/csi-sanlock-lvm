@@ -45,7 +45,7 @@ spec:
 
       containers:
         - name: driverd
-          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.4-5-ge4fdd83
+          image: quay.io/aleofreddi/csi-lvm-sanlock:v0.4.2
           imagePullPolicy: IfNotPresent
           args:
             - "--driver-name=csi-sanlock-lvm.csi.vleo.net"
@@ -110,7 +110,7 @@ spec:
               name: modules-dir
 
         - name: lvmctrld
-          image: quay.io/aleofreddi/lvmctrld:v0.4-5-ge4fdd83
+          image: quay.io/aleofreddi/lvmctrld:v0.4.2
           imagePullPolicy: IfNotPresent
           args:
             - "--listen=$(LVMCTRLD_ENDPOINT)"
