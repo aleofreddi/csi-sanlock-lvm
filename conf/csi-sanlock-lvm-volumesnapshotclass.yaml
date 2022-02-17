@@ -23,6 +23,6 @@ driver: csi-sanlock-lvm.csi.vleo.net
 parameters:
   # Snapshot maximum size in bytes.
   #maxSize: "21474836480" # 20 GiB
-  # Snapshot maximum size as a percentage of the origin size.
-  maxSizePct: "20"
+  # Snapshot maximum size as a percentage of the origin size as a value in (0, 1].
+  maxSizePct: "0.2"
 deletionPolicy: Delete
