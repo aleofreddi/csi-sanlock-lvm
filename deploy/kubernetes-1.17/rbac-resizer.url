@@ -1,1 +1,1 @@
-https://raw.githubusercontent.com/kubernetes-csi/external-resizer/v0.3.0/deploy/kubernetes/rbac.yaml
+https://raw.githubusercontent.com/kubernetes-csi/external-resizer/@@EXTERNAL_RESIZER_VERSION@@/deploy/kubernetes/rbac.yaml
