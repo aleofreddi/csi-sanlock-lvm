@@ -72,8 +72,8 @@ volumes:
 vgcreate --shared vg01 [/dev/device1 ... /dev/deviceN]
 
 # Create the csl-rpc-data logical volume.
-lvcreate -L 8m -n csi-rpc-data \
-  --add-tag csl-sanlock-lvm.vleo.net/rpcRole=data vg01 &&
+lvcreate -L 8m -n csl-rpc-data \
+  --add-tag csi-sanlock-lvm.vleo.net/rpcRole=data vg01 &&
   lvchange -a n vg01/csl-rpc-data
 
 # Create the csl-rpc-lock logical volume.
