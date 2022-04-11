@@ -683,7 +683,8 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		if maxPctSize == 0 || maxPctSize > 1 {
 			return nil, status.Errorf(codes.InvalidArgument, "invalid %s parameter %q: expected a value in range (0, 1]", maxSizePctParamKey, value)
 		}
-		size = math.MinUint64(size, uint64(float64(origInfo.LvSize)*maxPctSize))
+		maxSize := (uint64(float64(origInfo.LvSize)*maxPctSize) + 511) / 512 * 512
+		size = math.MinUint64(size, maxSize)
 	}
 	if value, present := req.Parameters[maxSizeParamKey]; present {
 		maxSize, err := strconv.ParseUint(value, 10, 64)
@@ -693,6 +694,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		if maxSize == 0 {
 			return nil, status.Errorf(codes.InvalidArgument, "invalid %s parameter %q: expected a positive value", maxSizeParamKey, value)
 		}
+		maxSize = (maxSize + 511) / 512 * 512
 		size = math.MinUint64(size, maxSize)
 	}
 
