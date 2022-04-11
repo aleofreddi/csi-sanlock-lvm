@@ -55,7 +55,7 @@ follows:
 # Extract the kubernetes major.minor version, ex. 1.19.
 kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
 
-kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.2/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.3/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
 ```
 
 Then attach the init pod as follows and initialize the VG.
@@ -108,7 +108,7 @@ as needed):
 kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
 
 # Install the csi-sanlock-lvm driver.
-kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.4.2"
+kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.4.3"
 ```
 
 It might take up to 3 minutes for the csi plugin to become `Running` on each
