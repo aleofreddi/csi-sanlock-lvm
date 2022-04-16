@@ -179,13 +179,14 @@ To build the project, you need:
 
 * A recent version of the golang compiler;
 * GNU make;
-* protoc compiler.
+* protoc compiler;
+* protoc-gen-go;
+* [gomock](https://github.com/golang/mock).
 
-To generate go implementations from proto files, you need to install
-`protoc-gen-go` as follows:
+You can install protoc-gen-go and gomock as follows:
 
 ```shell
-go get github.com/golang/protobuf/protoc-gen-go
+go install github.com/golang/protobuf/protoc-gen-go github.com/golang/mock/mockgen
 ```
 
 ### Build binaries
