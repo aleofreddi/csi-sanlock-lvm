@@ -289,6 +289,9 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 					Size:     srcSize, // FIXME: we should support tweaking this!
 				},
 			)
+			if err != nil {
+				return nil, status.Errorf(status.Code(err), "failed to snapshot %v to create volume %s: %v", srcVol, vol, err)
+			}
 			// Add dataVol data lv to cleanup list
 			cleanupVols[dataVol.VgLv()] = struct{}{}
 		} else {
@@ -333,7 +336,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 				Volume: lvToVolume(d.LogicalVolume),
 			}, nil
 		}
-		return nil, status.Errorf(codes.Internal, "failed to create volume %s: %v", vol, err)
+		return nil, status.Errorf(status.Code(err), "failed to create volume %s: %v", vol, err)
 	}
 	// Add new volume to cleanup list
 	cleanupVols[vol.VgLv()] = struct{}{}
