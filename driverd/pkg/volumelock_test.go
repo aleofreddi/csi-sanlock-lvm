@@ -241,7 +241,7 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 func expectLockerSyncLvs(t *testing.T, client *mock.MockLvmCtrldClient) *gomock.Call {
 	return client.EXPECT().
 			Lvs(gomock.Any(), CmpMatcher(t, &proto.LvsRequest{
-				Select: "lv_name=~^csi-v- && lv_active=active",
+				Select: "lv_name=~^csl-v- && lv_active=active",
 				Sort:   nil,
 				Target: nil,
 			}, protocmp.Transform())).
