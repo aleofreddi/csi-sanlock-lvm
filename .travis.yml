@@ -19,7 +19,7 @@ services:
   - docker
 
 go:
-  - 1.13
+  - 1.16
 
 env:
   global:

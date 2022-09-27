@@ -637,6 +637,10 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	}, nil
 }
 
+func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "ControllerGetVolume not implemented")
+}
+
 func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	// Check arguments.
 	if req.GetName() == "" {
@@ -896,6 +900,7 @@ func lvToVolume(lv *pb.LogicalVolume) *csi.Volume {
 	return &csi.Volume{
 		VolumeId:      vol.ID(),
 		CapacityBytes: int64(lv.LvSize),
+		// FIXME:
 		//VolumeContext:        nil,
 		//ContentSource:        nil,
 		//AccessibleTopology:   nil,

@@ -21,7 +21,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/utils/mount"
 )
 
 type FileSystemRegistry interface {
@@ -81,14 +81,14 @@ func (fs *rawFileSystem) Mount(source, mountPoint string, flags []string) error 
 		if os.IsExist(err) {
 			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %v", mountPoint, err)
 		}
-		if err = fs.mounter.MakeDir(mountPoint); err != nil {
+		if err = os.Mkdir(mountPoint, 0750); err != nil {
 			return status.Errorf(codes.Internal, "failed to create mount point %s: %v", mountPoint, err)
 		}
 		mounted = true
 	}
 
 	if mounted {
-		// Mount
+		// Mount the filesystem.
 		mounter := mount.New("")
 		err = mounter.Mount(source, mountPoint, "", flags)
 		if err != nil {
@@ -165,7 +165,7 @@ func (fs *fileSystem) Umount(mountPoint string) error {
 
 func umount(targetPath string) error {
 	mounter := mount.New("")
-	notMounted, err := mounter.IsNotMountPoint(targetPath)
+	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil && err == os.ErrNotExist || notMounted {
 		return nil
 	}
