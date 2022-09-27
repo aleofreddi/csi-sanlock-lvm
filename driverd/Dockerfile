@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.13 AS builder
+FROM golang:1.16 AS builder
 
 RUN apt-get update \
     && apt-get install -y protobuf-compiler golang-goprotobuf-dev gettext-base
