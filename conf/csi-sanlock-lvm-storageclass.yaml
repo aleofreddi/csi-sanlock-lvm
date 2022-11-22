@@ -23,6 +23,7 @@ provisioner: csi-sanlock-lvm.csi.vleo.net
 parameters:
   # Default volume group to use.
   volumeGroup: vg01
+  fsType: ext4
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
