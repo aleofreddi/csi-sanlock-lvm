@@ -24,8 +24,15 @@ import (
 	"k8s.io/klog"
 )
 
+type DiskRpcService interface {
+	diskrpc.DiskRpc
+
+	// Start the DiskRPC service.
+	Start(ctx context.Context) error
+}
+
 // DiskRpcService adapts DiskRpc to use volume locking.
-type DiskRpcService struct {
+type diskRpcService struct {
 	baseServer
 	diskrpc.DiskRpc
 	mailBox diskrpc.MailBox
@@ -76,7 +83,7 @@ func (vl *volumeLockerAdapter) Unlock() {
 	}
 }
 
-func NewDiskRpcService(lvmctrld pb.LvmCtrldClient, locker VolumeLocker) (*DiskRpcService, error) {
+func NewDiskRpcService(lvmctrld pb.LvmCtrldClient, locker VolumeLocker) (DiskRpcService, error) {
 	bs, err := newBaseServer(lvmctrld)
 	if err != nil {
 		return nil, err
@@ -142,16 +149,15 @@ func NewDiskRpcService(lvmctrld pb.LvmCtrldClient, locker VolumeLocker) (*DiskRp
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance diskrpc: %v", err)
 	}
-	return &DiskRpcService{
+	return &diskRpcService{
 		baseServer: *bs,
 		DiskRpc:    dRpc,
 		mailBox:    mb,
 	}, nil
 }
 
-func (s *DiskRpcService) Start() error {
+func (s *diskRpcService) Start(ctx context.Context) error {
 	go func() {
-		ctx := context.Background()
 		for {
 			err := s.Handle(ctx)
 			if err != nil {
