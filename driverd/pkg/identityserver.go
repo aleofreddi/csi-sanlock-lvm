@@ -19,14 +19,16 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type identityServer struct {
-	drvName string
-	version string
+	drvName   string
+	version   string
+	lvmClient *LvmCtrldClientConnection
 }
 
-func NewIdentityServer(drvName, version string) (*identityServer, error) {
+func NewIdentityServer(drvName, version string, lvmClient *LvmCtrldClientConnection) (*identityServer, error) {
 	if drvName == "" {
 		return nil, status.Error(codes.Unavailable, "missing driver name")
 	}
@@ -34,8 +36,9 @@ func NewIdentityServer(drvName, version string) (*identityServer, error) {
 		return nil, status.Error(codes.Unavailable, "missing driver version")
 	}
 	return &identityServer{
-		drvName: drvName,
-		version: version,
+		drvName:   drvName,
+		version:   version,
+		lvmClient: lvmClient,
 	}, nil
 }
 
@@ -75,5 +78,7 @@ func (is *identityServer) GetPluginCapabilities(ctx context.Context, req *csi.Ge
 }
 
 func (is *identityServer) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	return &csi.ProbeResponse{}, nil
+	return &csi.ProbeResponse{
+		Ready: wrapperspb.Bool(is.lvmClient.IsReady()),
+	}, nil
 }

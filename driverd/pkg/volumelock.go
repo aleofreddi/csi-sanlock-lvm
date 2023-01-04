@@ -28,6 +28,9 @@ import (
 )
 
 type VolumeLocker interface {
+	// Start the volume locker.
+	Start(ctx context.Context) error
+
 	// Lock the given volume for the given operation.
 	//
 	// Volume locks are reentrant per volume (but not per <volume, op> pairs),
@@ -45,8 +48,9 @@ type volumeLocker struct {
 	baseServer
 	nodeName string
 
-	locks map[string]map[string]struct{}
-	mutex *sync.Mutex
+	started bool
+	locks   map[string]map[string]struct{}
+	mutex   *sync.Mutex
 }
 
 const (
@@ -64,11 +68,15 @@ func NewVolumeLocker(lvmctrld pb.LvmCtrldClient, nodeName string) (VolumeLocker,
 		locks:      map[string]map[string]struct{}{},
 		mutex:      &sync.Mutex{},
 	}
-	ctx := context.Background()
-	if err = vl.sync(ctx); err != nil {
-		return nil, fmt.Errorf("failed to sync LVM state: %v", err)
-	}
 	return vl, nil
+}
+
+func (vl *volumeLocker) Start(ctx context.Context) error {
+	if err := vl.sync(ctx); err != nil {
+		return fmt.Errorf("failed to sync LVM state: %v", err)
+	}
+	vl.started = true
+	return nil
 }
 
 func (vl *volumeLocker) LockVolume(ctx context.Context, vol VolumeRef, op string) error {
