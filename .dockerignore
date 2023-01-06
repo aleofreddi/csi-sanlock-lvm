@@ -1,3 +1,11 @@
-*/bin
-*/proto/*.go
-*/mock/*.go
+# Scm, ide.
+.git
+.idea
+
+# Build artifacts.
+.makeargs
+coverage.txt
+cmd/*/*
+!cmd/*/*.*
+pkg/proto/*.go
+pkg/mock/*.go
