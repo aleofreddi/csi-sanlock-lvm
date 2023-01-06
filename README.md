@@ -180,13 +180,13 @@ To build the project, you need:
 * A recent version of the golang compiler;
 * GNU make;
 * protoc compiler;
-* protoc-gen-go;
+* protoc-gen-go and protoc-gen-go-grpc;
 * [gomock](https://github.com/golang/mock).
 
 You can install protoc-gen-go and gomock as follows:
 
 ```shell
-go install github.com/golang/protobuf/protoc-gen-go github.com/golang/mock/mockgen
+go install github.com/golang/protobuf/protoc-gen-go google.golang.org/grpc/cmd/protoc-gen-go-grpc github.com/golang/mock/mockgen
 ```
 
 ### Build binaries
