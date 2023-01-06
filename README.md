@@ -26,7 +26,7 @@ This project is in alpha state, YMMV.
 
 ## Prerequisite
 
-- Kubernetes 1.17+
+- Kubernetes 1.20+
 - `kubectl`
 
 ## Limitations
@@ -52,10 +52,7 @@ You can use the provided `csi-sanlock-lvm-init` pod to initialize lvm as
 follows:
 
 ```shell
-# Extract the kubernetes major.minor version, ex. 1.19.
-kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
-
-kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.3/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.3/deploy/kubernetes/csi-sanlock-lvm-init.var.yaml"
 ```
 
 Then attach the init pod as follows and initialize the VG.
@@ -104,11 +101,8 @@ And then deploy using `kustomization` (adjust the kubernetes version in the link
 as needed):
 
 ```shell
-# Extract the kubernetes major.minor version.
-kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
-
 # Install the csi-sanlock-lvm driver.
-kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.4.3"
+kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes?ref=v0.4.3"
 ```
 
 It might take up to 3 minutes for the csi plugin to become `Running` on each
