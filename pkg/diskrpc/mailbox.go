@@ -499,5 +499,5 @@ func (mb *mailBox) allocatorFromState(alloc Allocator, state stSeg) {
 }
 
 func (mb *mailBox) toBlocks(bSize, size int) int {
-	return ((size-1)/bSize + 1)
+	return (size-1)/bSize + 1
 }
