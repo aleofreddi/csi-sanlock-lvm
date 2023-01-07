@@ -1,6 +1,10 @@
 .PHONY: args build clean mock proto test %.image %.push
 
+# Recursive wildcard from https://stackoverflow.com/questions/2483182/recursive-wildcards-in-gnu-make.
+rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
+
 BIN=cmd/lvmctrld/lvmctrld cmd/driverd/driverd
+GO=$(call rwildcard,.,*.go)
 MOCK=$(addprefix pkg/mock/, diskrpc.mock.go filesystem.mock.go filesystemregistry.mock.go lvmctrldclient.mock.go mount.mock.go volumelocker.mock.go)
 PROTO=$(addprefix pkg/proto/, lvmctrld.pb.go lvmctrld_grpc.pb.go diskrpc.pb.go)
 MANIFEST=$(addsuffix .yaml, $(wildcard deploy/kubernetes/*.url) $(wildcard deploy/kubernetes/*.var))
@@ -27,7 +31,7 @@ ifneq ($(ARGS_CURR),$(ARGS_PREV))
 ARGS_DEP=args
 endif
 
-ifeq ($(VERSION), latest)
+ifeq ($(VERSION), test)
 IMAGE_PULL_POLICY=Always
 else
 IMAGE_PULL_POLICY=IfNotPresent
@@ -49,7 +53,7 @@ clean:
 test coverage.txt: mock
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd/* ./pkg/*
 
-%: %.bin $(ARGS_DEP) | proto
+%: %.bin $(GO) $(ARGS_DEP) | proto
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION) -X main.commit=$(COMMIT)' -o $@ ./$(@D)
 
 %.pb.go %_grpc.pb.go: %.proto
