@@ -147,8 +147,7 @@ The following volume snapshot class parameters are supported:
   size;
 - `maxSize` _(optional)_: maximum snapshot size.
 
-If multiple maximum size settings are provided, the snapshot will use the least
-one.
+If both `maxSizePct` and `maxSize` are set, the strictest is applied.
 
 ## Example application
 
