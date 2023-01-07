@@ -65,7 +65,7 @@ test coverage.txt: mock
 	envsubst < $< > $@
 
 %.image:
-	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t quay.io/aleofreddi/csi-sanlock-lvm-$*:$(VERSION) -f build/docker/$*/Dockerfile .
+	docker build --platform linux/x86_64 --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t quay.io/aleofreddi/csi-sanlock-lvm-$*:$(VERSION) -f build/docker/$*/Dockerfile .
 
 %.push: %.image
 	docker push quay.io/aleofreddi/csi-sanlock-lvm-$*:$(VERSION)
