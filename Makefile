@@ -7,13 +7,16 @@ BIN=cmd/lvmctrld/lvmctrld cmd/driverd/driverd
 GO=$(call rwildcard,.,*.go)
 MOCK=$(addprefix pkg/mock/, diskrpc.mock.go filesystem.mock.go filesystemregistry.mock.go lvmctrldclient.mock.go mount.mock.go volumelocker.mock.go)
 PROTO=$(addprefix pkg/proto/, lvmctrld.pb.go lvmctrld_grpc.pb.go diskrpc.pb.go)
-MANIFEST=$(addsuffix .yaml, $(wildcard deploy/kubernetes/*.url, deploy/kubernetes/*.var))
+MANIFEST=$(addsuffix .yaml, $(wildcard deploy/kubernetes/*.url) $(wildcard deploy/kubernetes/*.var))
 IMAGE=lvmctrld.image driverd.image
 PUSH=lvmctrld.push driverd.push
 
-export EXTERNAL_SNAPSHOTTER_VERSION=v5.0.1  # k8s>=1.20, v4.0.1 k8s>=1.17
-export EXTERNAL_ATTACHER_VERSION=v3.4.0  # k8s>=1.20
-export EXTERNAL_PROVISIONER_VERSION=v3.1.0  # k8s>=1.20, v2.2.2 k8s>=1.17
+# k8s>=1.20, v4.0.1 k8s>=1.17
+export EXTERNAL_SNAPSHOTTER_VERSION=v5.0.1
+# k8s>=1.20
+export EXTERNAL_ATTACHER_VERSION=v3.4.0
+# k8s>=1.20, v2.2.2 k8s>=1.17
+export EXTERNAL_PROVISIONER_VERSION=v3.1.0
 export EXTERNAL_RESIZER_VERSION=v1.4.0
 
 VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
