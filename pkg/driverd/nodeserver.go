@@ -81,7 +81,7 @@ func (ns *nodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 }
 
 func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	// Check arguments
+	// Check arguments.
 	if req.GetVolumeId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume id")
 	}
@@ -95,9 +95,73 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "inconsistent access type")
 	}
 
+	// Decode access type from request.
+	var accessType VolumeAccessType
+	if req.GetVolumeCapability().GetMount() != nil {
+		accessType = MountAccessType
+	} else {
+		accessType = BlockAccessType
+	}
+
+	mountFlags := make([]string, 0)
+	if accessType == MountAccessType {
+		mountFlags = append(mountFlags, "bind")
+		//req.GetVolumeCapability().GetMount().GetMountFlags()...)""
+		if req.GetReadonly() {
+			mountFlags = append(mountFlags, "ro")
+		} else {
+			mountFlags = append(mountFlags, "rw")
+		}
+	}
+
+	// Mount.
+	fs, _ := ns.fsRegistry.GetFileSystem(BindFsName)
+	err := fs.Mount(req.GetStagingTargetPath(), req.GetTargetPath(), mountFlags, true)
+	if err != nil {
+		return nil, err
+	}
+	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	// Check arguments.
+	if req.GetVolumeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	}
+	if req.GetTargetPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing target path")
+	}
+
+	// Unmount.
+	fs, _ := ns.fsRegistry.GetFileSystem(BindFsName)
+	err := fs.Umount(req.GetTargetPath(), true)
+	if err != nil {
+		return nil, err
+	}
+	return &csi.NodeUnpublishVolumeResponse{}, nil
+}
+
+func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+	// Check arguments.
+	if req.GetVolumeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	}
+	if req.GetVolumeCapability() == nil {
+		return nil, status.Error(codes.InvalidArgument, "missing volume capability")
+	}
+	if req.GetStagingTargetPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing staging target path")
+	}
+
 	vol, err := NewVolumeRefFromID(req.GetVolumeId())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
+	}
+
+	// Lock the volume.
+	err = ns.volumeLock.LockVolume(ctx, *vol, defaultLockOp)
+	if err != nil {
+		return nil, err
 	}
 
 	// Decode access type from request
@@ -108,7 +172,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		accessType = BlockAccessType
 	}
 
-	// Retrieve the filesystem type for the volume
+	// Retrieve the filesystem type for the volume.
 	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
 	if err != nil {
 		return nil, err
@@ -118,7 +182,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Errorf(codes.Internal, "failed to decode tags for volume %q: %v", vol, err)
 	}
 
-	// Extract the filesystem
+	// Extract the filesystem.
 	fsName, ok := tags[fsTagKey]
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
@@ -134,26 +198,27 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	mountFlags := make([]string, 0)
 	if accessType == MountAccessType {
 		mountFlags = append(mountFlags, req.GetVolumeCapability().GetMount().GetMountFlags()...)
-		if req.GetReadonly() {
-			mountFlags = append(mountFlags, "ro")
-		} else {
-			mountFlags = append(mountFlags, "rw")
-		}
+		//if req.GetReadonly() {
+		//	mountFlags = append(mountFlags, "ro")
+		//} else {
+		//	mountFlags = append(mountFlags, "rw")
+		//}
 	}
 
-	if err = fs.Mount(vol.DevPath(), req.GetTargetPath(), mountFlags); err != nil {
+	// Mount.
+	if err = fs.Mount(vol.DevPath(), req.GetStagingTargetPath(), mountFlags, false); err != nil {
 		return nil, err
 	}
-	return &csi.NodePublishVolumeResponse{}, nil
+	return &csi.NodeStageVolumeResponse{}, nil
 }
 
-func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	// Check arguments
+func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	// Check arguments.
 	if req.GetVolumeId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume id")
 	}
-	if req.GetTargetPath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing target path")
+	if req.GetStagingTargetPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing staging target path")
 	}
 
 	vol, err := NewVolumeRefFromID(req.GetVolumeId())
@@ -161,7 +226,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
 
-	// Retrieve the filesystem type for the volume
+	// Retrieve the filesystem type for the volume.
 	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
 	if err != nil {
 		return nil, err
@@ -171,7 +236,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Errorf(codes.Internal, "failed to decode tags for volume %q: %v", vol, err)
 	}
 
-	// Extract the filesystem
+	// Extract the filesystem.
 	fsName, ok := tags[fsTagKey]
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
@@ -181,55 +246,13 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
 	}
 
-	// Unmount
-	err = fs.Umount(req.GetTargetPath())
+	// Unmount.
+	err = fs.Umount(req.GetStagingTargetPath(), false)
 	if err != nil {
 		return nil, err
 	}
 
-	return &csi.NodeUnpublishVolumeResponse{}, nil
-}
-
-func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	// Check arguments
-	if req.GetVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing volume id")
-	}
-	if req.GetVolumeCapability() == nil {
-		return nil, status.Error(codes.InvalidArgument, "missing volume capability")
-	}
-	if req.GetStagingTargetPath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing staging target path")
-	}
-
-	vol, err := NewVolumeRefFromID(req.GetVolumeId())
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
-	}
-
-	// Lock the volume
-	err = ns.volumeLock.LockVolume(ctx, *vol, defaultLockOp)
-	if err != nil {
-		return nil, err
-	}
-	return &csi.NodeStageVolumeResponse{}, nil
-}
-
-func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
-	// Check arguments
-	if req.GetVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing volume id")
-	}
-	if req.GetStagingTargetPath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing staging target path")
-	}
-
-	vol, err := NewVolumeRefFromID(req.GetVolumeId())
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
-	}
-
-	// Lock the volume
+	// Lock the volume.
 	err = ns.volumeLock.UnlockVolume(ctx, *vol, defaultLockOp)
 	if err != nil {
 		return nil, err

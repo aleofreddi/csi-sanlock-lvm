@@ -32,14 +32,14 @@ type FileSystem interface {
 	Accepts(accessType VolumeAccessType) bool
 	Make(device string) error
 	Grow(device string) error
-	Mount(source, mountPoint string, flags []string) error
-	Umount(mountPoint string) error
+	Mount(source, mountPoint string, flags []string, create bool) error
+	Umount(mountPoint string, delete bool) error
 }
 
 type fileSystemRegistry struct {
 }
 
-type rawFileSystem struct {
+type bindFileSystem struct {
 	mounter mount.Interface
 }
 
@@ -57,49 +57,52 @@ func (fr *fileSystemRegistry) GetFileSystem(filesystem string) (FileSystem, erro
 }
 
 func NewFileSystem(fs string) (FileSystem, error) {
-	if fs == BlockAccessFsName {
-		return &rawFileSystem{mount.New("")}, nil
+	if fs == BlockAccessFsName || fs == BindFsName {
+		return &bindFileSystem{mount.New("")}, nil
 	}
 	return &fileSystem{mount.New(""), fs}, nil
 }
 
-func (fs *rawFileSystem) Make(_ string) error {
+func (fs *bindFileSystem) Make(_ string) error {
 	return nil
 }
 
-func (fs *rawFileSystem) Grow(_ string) error {
+func (fs *bindFileSystem) Grow(_ string) error {
 	return nil
 }
 
-func (fs *rawFileSystem) Accepts(accessType VolumeAccessType) bool {
+func (fs *bindFileSystem) Accepts(accessType VolumeAccessType) bool {
 	return accessType == BlockAccessType
 }
 
-func (fs *rawFileSystem) Mount(source, mountPoint string, flags []string) error {
-	mounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
+func (fs *bindFileSystem) Mount(source, mountPoint string, flags []string, create bool) error {
+	notMounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
 	if err != nil {
-		if os.IsExist(err) {
+		if !os.IsNotExist(err) {
 			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %v", mountPoint, err)
+		}
+		if !create {
+			return status.Errorf(codes.Internal, "%s does not exist", mountPoint)
 		}
 		if err = os.Mkdir(mountPoint, 0750); err != nil {
 			return status.Errorf(codes.Internal, "failed to create mount point %s: %v", mountPoint, err)
 		}
-		mounted = true
+		notMounted = true
 	}
 
-	if mounted {
+	if notMounted {
 		// Mount the filesystem.
 		mounter := mount.New("")
 		err = mounter.Mount(source, mountPoint, "", flags)
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return status.Errorf(codes.Internal, "failed to mount: %v", err)
 		}
 	}
 	return nil
 }
 
-func (fs *rawFileSystem) Umount(mountPoint string) error {
-	return umount(mountPoint)
+func (fs *bindFileSystem) Umount(mountPoint string, delete bool) error {
+	return umountIfMounted(mountPoint, delete)
 }
 
 func (fs *fileSystem) Make(device string) error {
@@ -124,11 +127,11 @@ func (fs *fileSystem) Grow(device string) error {
 	if err := checkfs.Run(); err != nil && checkfs.ProcessState.ExitCode() != 3 {
 		return status.Errorf(codes.Internal, "failed to check volume %s: %v (%s %s)", device, err, stdout.String(), stderr.String())
 	}
-	resize2fs := exec.Command("fsadm", "resize", device)
+	resize := exec.Command("fsadm", "resize", device)
 	stdout, stderr = new(bytes.Buffer), new(bytes.Buffer)
-	resize2fs.Stdout = stdout
-	resize2fs.Stderr = stderr
-	if err := resize2fs.Run(); err != nil {
+	resize.Stdout = stdout
+	resize.Stderr = stderr
+	if err := resize.Run(); err != nil {
 		return status.Errorf(codes.Internal, "failed to resize volume %s: %v (%s %s)", device, err, stdout.String(), stderr.String())
 	}
 	return nil
@@ -138,46 +141,51 @@ func (fs *fileSystem) Accepts(accessType VolumeAccessType) bool {
 	return accessType == MountAccessType
 }
 
-func (fs *fileSystem) Mount(source, mountPoint string, flags []string) error {
-	mounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
+func (fs *fileSystem) Mount(source, mountPoint string, flags []string, create bool) error {
+	notMounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
 	if err != nil {
-		if os.IsExist(err) {
-			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %s", mountPoint, err.Error())
+		if !os.IsNotExist(err) {
+			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %v", mountPoint, err)
+		}
+		if !create {
+			return status.Errorf(codes.Internal, "%s does not exist", mountPoint)
 		}
 		if err := os.MkdirAll(mountPoint, 0750); err != nil {
-			return status.Errorf(codes.Internal, "failed to mkdir %s: %s", mountPoint, err.Error())
+			return status.Errorf(codes.Internal, "failed to mkdir %s: %v", mountPoint, err)
 		}
-		mounted = true
+		notMounted = true
 	}
 
-	if mounted {
+	if notMounted {
+		// Mount the filesystem.
 		err = fs.mounter.Mount(source, mountPoint, fs.fileSystem, flags)
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return status.Errorf(codes.Internal, "failed to mount: %v", err)
 		}
 	}
 	return nil
 }
 
-func (fs *fileSystem) Umount(mountPoint string) error {
-	return umount(mountPoint)
+func (fs *fileSystem) Umount(mountPoint string, delete bool) error {
+	return umountIfMounted(mountPoint, delete)
 }
 
-func umount(targetPath string) error {
+func umountIfMounted(targetPath string, delete bool) error {
 	mounter := mount.New("")
 	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
-	if err != nil && err == os.ErrNotExist || notMounted {
+	if err != nil && err == os.ErrNotExist {
 		return nil
 	}
-
-	err = mounter.Unmount(targetPath)
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to unmount %q: %s", targetPath, err.Error())
+	if !notMounted {
+		err = mounter.Unmount(targetPath)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to unmount %q: %s", targetPath, err.Error())
+		}
 	}
-
-	if err = os.RemoveAll(targetPath); err != nil {
-		return status.Errorf(codes.Internal, "failed to remove %q: %s", targetPath, err.Error())
+	if delete {
+		if err = os.RemoveAll(targetPath); err != nil {
+			return status.Errorf(codes.Internal, "failed to remove %q: %s", targetPath, err.Error())
+		}
 	}
-
 	return nil
 }
