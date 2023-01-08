@@ -31,6 +31,7 @@ RUN apt-get update \
 	&& apt-get clean
 
 COPY ./configs/lvmctrld/lvm.conf etc/lvm/lvm.conf
+RUN ln -s /proc/mounts /etc/mtab
 COPY --from=builder /src/cmd/lvmctrld/lvmctrld /lvmctrld
 
 ENTRYPOINT ["/lvmctrld"]

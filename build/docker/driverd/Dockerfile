@@ -30,6 +30,7 @@ RUN apt-get update \
 	&& apt-get install -y file util-linux e2fsprogs lvm2 \
 	&& apt-get clean
 
+RUN ln -s /proc/mounts /etc/mtab
 COPY --from=builder /src/cmd/driverd/driverd /driverd
 
 ENTRYPOINT ["/driverd"]
