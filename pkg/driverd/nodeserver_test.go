@@ -20,8 +20,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/aleofreddi/csi-sanlock-lvm/pkg/mock"
 	pkg "github.com/aleofreddi/csi-sanlock-lvm/pkg/driverd"
+	"github.com/aleofreddi/csi-sanlock-lvm/pkg/mock"
 	"github.com/aleofreddi/csi-sanlock-lvm/pkg/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -195,11 +195,11 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					locker.EXPECT().
-							LockVolume(
-								gomock.Any(),
-								*MustVolumeRefFromID("volume1@vg00"),
-								"stage",
-							).
+						LockVolume(
+							gomock.Any(),
+							*MustVolumeRefFromID("volume1@vg00"),
+							"stage",
+						).
 						Return(status.Error(codes.Internal, "internal error")),
 				)
 				return &fields{
@@ -230,11 +230,11 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					locker.EXPECT().
-							LockVolume(
-								gomock.Any(),
-								*MustVolumeRefFromID("volume1@vg00"),
-								"stage",
-							).
+						LockVolume(
+							gomock.Any(),
+							*MustVolumeRefFromID("volume1@vg00"),
+							"stage",
+						).
 						Return(nil),
 				)
 				return &fields{
@@ -352,14 +352,14 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					locker.EXPECT().
-							UnlockVolume(
-								gomock.Any(),
-								*MustVolumeRefFromID("volume1@vg00"),
-								"stage",
-							).
-							Return(
-								status.Error(codes.Internal, "internal error"),
-							),
+						UnlockVolume(
+							gomock.Any(),
+							*MustVolumeRefFromID("volume1@vg00"),
+							"stage",
+						).
+						Return(
+							status.Error(codes.Internal, "internal error"),
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -388,11 +388,11 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					locker.EXPECT().
-							UnlockVolume(
-								gomock.Any(),
-								*MustVolumeRefFromID("volume1@vg00"),
-								"stage",
-							).
+						UnlockVolume(
+							gomock.Any(),
+							*MustVolumeRefFromID("volume1@vg00"),
+							"stage",
+						).
 						Return(nil),
 				)
 				return &fields{
@@ -586,15 +586,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								nil,
-								status.Error(codes.Internal, "internal error"),
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							nil,
+							status.Error(codes.Internal, "internal error"),
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -627,15 +627,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								nil,
-								status.Error(codes.NotFound, "not found"),
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							nil,
+							status.Error(codes.NotFound, "not found"),
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -668,15 +668,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw", "csi-sanlock-lvm.vleo.net/fs=ext4"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw", "csi-sanlock-lvm.vleo.net/fs=ext4"}}}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -709,15 +709,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{}}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -750,15 +750,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
+							nil,
+						),
 
 					fsRegistry.EXPECT().
 						GetFileSystem("raw").Return(nil, errors.New("unknown filesystem")),
@@ -795,15 +795,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
+							nil,
+						),
 
 					fsRegistry.EXPECT().
 						GetFileSystem("raw").Return(fs, nil),
@@ -843,15 +843,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
+							nil,
+						),
 
 					fsRegistry.EXPECT().
 						GetFileSystem("raw").Return(fs, nil),
@@ -894,15 +894,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}}}},
+							nil,
+						),
 
 					fsRegistry.EXPECT().
 						GetFileSystem("ext4").Return(fs, nil),
@@ -947,15 +947,15 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}}}},
+							nil,
+						),
 
 					fsRegistry.EXPECT().
 						GetFileSystem("ext4").Return(fs, nil),
@@ -1091,15 +1091,15 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								nil,
-								status.Error(codes.Internal, "internal error"),
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							nil,
+							status.Error(codes.Internal, "internal error"),
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -1128,15 +1128,15 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								nil,
-								status.Error(codes.NotFound, "not found"),
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							nil,
+							status.Error(codes.NotFound, "not found"),
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -1165,15 +1165,15 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								nil,
-								status.Errorf(codes.NotFound, "error"),
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							nil,
+							status.Errorf(codes.NotFound, "error"),
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -1202,15 +1202,15 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw", "csi-sanlock-lvm.vleo.net/fs=ext4"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw", "csi-sanlock-lvm.vleo.net/fs=ext4"}}}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -1239,15 +1239,15 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{}}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -1276,15 +1276,15 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
+							nil,
+						),
 
 					fsRegistry.EXPECT().
 						GetFileSystem("raw").Return(nil, errors.New("unknown filesystem")),
@@ -1317,15 +1317,15 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 					expectGetStatus(t, client),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Target: []string{"vg00/volume1"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{{LvTags: []string{"csi-sanlock-lvm.vleo.net/fs=raw"}}}},
+							nil,
+						),
 
 					fsRegistry.EXPECT().
 						GetFileSystem("raw").Return(fs, nil),

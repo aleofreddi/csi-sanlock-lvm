@@ -72,17 +72,17 @@ func decodeTag(encodedTag string) (string, error) {
 
 func isPlain(b byte, pos int) bool {
 	return b >= 'a' && b <= 'z' ||
-			b >= 'A' && b <= 'Z' ||
-			b >= '0' && b <= '9' ||
-			b == '_' ||
-			b == '+' ||
-			b == '.' ||
-			(b == '-' && pos > 0) || // LVM doesn't allow hyphen starting tags
-			b == '/' ||
-			b == '=' ||
-			b == '!' ||
-			b == ':' ||
-			b == '#'
+		b >= 'A' && b <= 'Z' ||
+		b >= '0' && b <= '9' ||
+		b == '_' ||
+		b == '+' ||
+		b == '.' ||
+		(b == '-' && pos > 0) || // LVM doesn't allow hyphen starting tags
+		b == '/' ||
+		b == '=' ||
+		b == '!' ||
+		b == ':' ||
+		b == '#'
 }
 
 func hexDecode(hex byte) (byte, error) {

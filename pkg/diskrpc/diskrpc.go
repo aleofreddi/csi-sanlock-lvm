@@ -298,7 +298,7 @@ func (s *diskRpc) handleRequest(ctx context.Context, sender MailBoxID, dMsg *pb.
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	// TODO: hardcoded limit!
-	if len(s.outgoing) > 4 * 64 {
+	if len(s.outgoing) > 4*64 {
 		return status.Errorf(codes.ResourceExhausted, "too many queued request")
 	}
 	s.outgoing = append(s.outgoing, &Message{

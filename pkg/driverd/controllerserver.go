@@ -47,8 +47,8 @@ const (
 )
 
 var (
-	volumeIdRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*@[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
-	vgRe             = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	volumeIdRe = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*@[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
+	vgRe       = regexp.MustCompile("^[a-zA-Z0-9+_.][a-zA-Z0-9+_.-]*$")
 )
 
 type VolumeAccessType int
@@ -486,8 +486,8 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		if cpb.GetAccessMode() != nil {
 			accessMode := cpb.GetAccessMode().GetMode()
 			valid = valid &&
-					(accessMode == csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER ||
-							accessMode == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY)
+				(accessMode == csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER ||
+					accessMode == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY)
 			validCap.AccessMode = &csi.VolumeCapability_AccessMode{
 				Mode: accessMode,
 			}
@@ -502,16 +502,14 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		} else if cpb.GetBlock() != nil {
 			valid = valid && tags[fsTagKey] == BlockAccessFsName
 			validCap.AccessType = &csi.VolumeCapability_Block{
-				Block: &csi.VolumeCapability_BlockVolume{
-				},
+				Block: &csi.VolumeCapability_BlockVolume{},
 			}
 		}
 		validCaps = append(validCaps, validCap)
 	}
 
 	if !valid {
-		return &csi.ValidateVolumeCapabilitiesResponse{
-		}, nil
+		return &csi.ValidateVolumeCapabilitiesResponse{}, nil
 	}
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
