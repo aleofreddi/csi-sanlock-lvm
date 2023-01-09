@@ -60,24 +60,24 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					expectRegisterChannel(t, diskRpc),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1"},
-									{VgName: "vg1", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv1"},
-									{VgName: "vg2", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv3"},
-									{VgName: "vg2", LvName: "lv4"},
-									{VgName: "vg2", LvName: "lv5"},
-									{VgName: "vg2", LvName: "lv6"},
-								}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
+								{VgName: "vg1", LvName: "lv1"},
+								{VgName: "vg1", LvName: "lv2"},
+								{VgName: "vg2", LvName: "lv1"},
+								{VgName: "vg2", LvName: "lv2"},
+								{VgName: "vg2", LvName: "lv3"},
+								{VgName: "vg2", LvName: "lv4"},
+								{VgName: "vg2", LvName: "lv5"},
+								{VgName: "vg2", LvName: "lv6"},
+							}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -108,24 +108,24 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					expectRegisterChannel(t, diskRpc),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1"},
-									{VgName: "vg1", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv1"},
-									{VgName: "vg2", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv3"},
-									{VgName: "vg2", LvName: "lv4"},
-									{VgName: "vg2", LvName: "lv5"},
-									{VgName: "vg2", LvName: "lv6"},
-								}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
+								{VgName: "vg1", LvName: "lv1"},
+								{VgName: "vg1", LvName: "lv2"},
+								{VgName: "vg2", LvName: "lv1"},
+								{VgName: "vg2", LvName: "lv2"},
+								{VgName: "vg2", LvName: "lv3"},
+								{VgName: "vg2", LvName: "lv4"},
+								{VgName: "vg2", LvName: "lv5"},
+								{VgName: "vg2", LvName: "lv6"},
+							}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -162,24 +162,24 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					expectRegisterChannel(t, diskRpc),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1"},
-									{VgName: "vg1", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv1"},
-									{VgName: "vg2", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv3"},
-									{VgName: "vg2", LvName: "lv4"},
-									{VgName: "vg2", LvName: "lv5"},
-									{VgName: "vg2", LvName: "lv6"},
-								}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
+								{VgName: "vg1", LvName: "lv1"},
+								{VgName: "vg1", LvName: "lv2"},
+								{VgName: "vg2", LvName: "lv1"},
+								{VgName: "vg2", LvName: "lv2"},
+								{VgName: "vg2", LvName: "lv3"},
+								{VgName: "vg2", LvName: "lv4"},
+								{VgName: "vg2", LvName: "lv5"},
+								{VgName: "vg2", LvName: "lv6"},
+							}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -217,24 +217,24 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 					expectRegisterChannel(t, diskRpc),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1"},
-									{VgName: "vg1", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv1"},
-									{VgName: "vg2", LvName: "lv2"},
-									{VgName: "vg2", LvName: "lv3"},
-									{VgName: "vg2", LvName: "lv4"},
-									{VgName: "vg2", LvName: "lv5"},
-									{VgName: "vg2", LvName: "lv6"},
-								}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-v-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
+								{VgName: "vg1", LvName: "lv1"},
+								{VgName: "vg1", LvName: "lv2"},
+								{VgName: "vg2", LvName: "lv1"},
+								{VgName: "vg2", LvName: "lv2"},
+								{VgName: "vg2", LvName: "lv3"},
+								{VgName: "vg2", LvName: "lv4"},
+								{VgName: "vg2", LvName: "lv5"},
+								{VgName: "vg2", LvName: "lv6"},
+							}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -317,24 +317,24 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					expectRegisterChannel(t, diskRpc),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
-								}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
+								{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
+								{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
+							}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -365,24 +365,24 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					expectRegisterChannel(t, diskRpc),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
-								}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
+								{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
+								{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
+							}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -419,24 +419,24 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					expectRegisterChannel(t, diskRpc),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
-								}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
+								{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
+								{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
+							}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -474,24 +474,24 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					expectRegisterChannel(t, diskRpc),
 
 					client.EXPECT().
-							Lvs(
-								gomock.Any(),
-								CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
-								gomock.Any(),
-							).
-							Return(
-								&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
-									{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
-									{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
-								}},
-								nil,
-							),
+						Lvs(
+							gomock.Any(),
+							CmpMatcher(t, &proto.LvsRequest{Select: "lv_name=~^csl-s-", Sort: []string{"vg_name", "lv_name"}}, protocmp.Transform()),
+							gomock.Any(),
+						).
+						Return(
+							&proto.LvsResponse{Lvs: []*proto.LogicalVolume{
+								{VgName: "vg1", LvName: "lv1", Origin: "lv0"},
+								{VgName: "vg1", LvName: "lv2", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv1", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv2", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv3", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv4", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv5", Origin: "lv0"},
+								{VgName: "vg2", LvName: "lv6", Origin: "lv0"},
+							}},
+							nil,
+						),
 				)
 				return &fields{
 					lvmctrld:     client,
@@ -547,10 +547,10 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 func expectGetStatus(t *testing.T, client *mock.MockLvmCtrldClient) *gomock.Call {
 	return client.EXPECT().
 		GetStatus(gomock.Any(), CmpMatcher(t, &proto.GetStatusRequest{}, protocmp.Transform())).
-			Return(
-				&proto.GetStatusResponse{NodeId: 1234},
-				nil,
-			)
+		Return(
+			&proto.GetStatusResponse{NodeId: 1234},
+			nil,
+		)
 }
 
 func expectRegisterChannel(t *testing.T, diskRpc *mock.MockDiskRpc) *gomock.Call {

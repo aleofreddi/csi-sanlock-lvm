@@ -40,10 +40,10 @@ func NewListener(addr string, is *identityServer, ns *nodeServer, cs *controller
 	}
 
 	return &Listener{
-		addr:   addr,
-		is:     is,
-		ns:     ns,
-		cs:     cs,
+		addr: addr,
+		is:   is,
+		ns:   ns,
+		cs:   cs,
 	}, nil
 }
 
