@@ -139,7 +139,7 @@ func NewMailBox(localID MailBoxID, locker sync.Locker, dataFile string) (*mailBo
 	if err != nil {
 		return nil, fmt.Errorf("failed to read header: %v", err)
 	}
-	klog.Infof("MailBox file block size is %d, state segment size %d, allocator size %d", bSize, sSize, aSize)
+	klog.Infof("MailBox file block size is %d bytes, state segment size %d bytes, allocator size %d bytes", bSize, sSize, aSize)
 	return mb, nil
 }
 
