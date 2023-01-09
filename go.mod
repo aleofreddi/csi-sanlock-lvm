@@ -1,10 +1,11 @@
 module github.com/aleofreddi/csi-sanlock-lvm
 
-go 1.17
+go 1.18
 
 require (
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/golang/mock v1.6.0
+	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.1.2
 	github.com/kubernetes-csi/csi-lib-utils v0.12.0

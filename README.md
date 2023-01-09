@@ -22,6 +22,7 @@ This project is in alpha state, YMMV.
     - Support single node read/write access
 - Online volume extension
 - Online snapshot support
+- Volume groups (fs groups)
 - ~~Ephemeral volumes~~ (TODO)
 
 ## Prerequisite

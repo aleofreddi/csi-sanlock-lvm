@@ -16,12 +16,21 @@ package driverd
 
 import (
 	"bytes"
-	"os"
-	"os/exec"
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/utils/mount"
+	"os"
+	"os/exec"
+	"path/filepath"
+)
+
+// Action to be taken when mountpoint does not exist.
+type mountPointAction int
+
+const (
+	requireExisting mountPointAction = 0
+	createFile                       = 1
+	createDirectory                  = 2
 )
 
 type FileSystemRegistry interface {
@@ -32,19 +41,19 @@ type FileSystem interface {
 	Accepts(accessType VolumeAccessType) bool
 	Make(device string) error
 	Grow(device string) error
-	Mount(source, mountPoint string, flags []string, create bool) error
-	Umount(mountPoint string, delete bool) error
+	Stage(device, stagePoint string, flags []string, grpID *int) error
+	Unstage(stagePoint string) error
+	Publish(device, stagePoint, mountPoint string, readOnly bool) error
+	Unpublish(mountPoint string) error
 }
 
 type fileSystemRegistry struct {
 }
 
-type bindFileSystem struct {
-	mounter mount.Interface
+type rawFilesystem struct {
 }
 
 type fileSystem struct {
-	mounter    mount.Interface
 	fileSystem string
 }
 
@@ -57,52 +66,10 @@ func (fr *fileSystemRegistry) GetFileSystem(filesystem string) (FileSystem, erro
 }
 
 func NewFileSystem(fs string) (FileSystem, error) {
-	if fs == BlockAccessFsName || fs == BindFsName {
-		return &bindFileSystem{mount.New("")}, nil
+	if fs == BlockAccessFsName {
+		return &rawFilesystem{}, nil
 	}
-	return &fileSystem{mount.New(""), fs}, nil
-}
-
-func (fs *bindFileSystem) Make(_ string) error {
-	return nil
-}
-
-func (fs *bindFileSystem) Grow(_ string) error {
-	return nil
-}
-
-func (fs *bindFileSystem) Accepts(accessType VolumeAccessType) bool {
-	return accessType == BlockAccessType
-}
-
-func (fs *bindFileSystem) Mount(source, mountPoint string, flags []string, create bool) error {
-	notMounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %v", mountPoint, err)
-		}
-		if !create {
-			return status.Errorf(codes.Internal, "%s does not exist", mountPoint)
-		}
-		if err = os.Mkdir(mountPoint, 0750); err != nil {
-			return status.Errorf(codes.Internal, "failed to create mount point %s: %v", mountPoint, err)
-		}
-		notMounted = true
-	}
-
-	if notMounted {
-		// Mount the filesystem.
-		mounter := mount.New("")
-		err = mounter.Mount(source, mountPoint, "", flags)
-		if err != nil {
-			return status.Errorf(codes.Internal, "failed to mount: %v", err)
-		}
-	}
-	return nil
-}
-
-func (fs *bindFileSystem) Umount(mountPoint string, delete bool) error {
-	return umountIfMounted(mountPoint, delete)
+	return &fileSystem{fs}, nil
 }
 
 func (fs *fileSystem) Make(device string) error {
@@ -141,24 +108,118 @@ func (fs *fileSystem) Accepts(accessType VolumeAccessType) bool {
 	return accessType == MountAccessType
 }
 
-func (fs *fileSystem) Mount(source, mountPoint string, flags []string, create bool) error {
-	notMounted, err := fs.mounter.IsLikelyNotMountPoint(mountPoint)
+func (fs *fileSystem) Stage(device, stagePoint string, flags []string, grpID *int) error {
+	err := mountFs(device, stagePoint, fs.fileSystem, flags, requireExisting)
+	if err != nil {
+		return err
+	}
+	if grpID != nil {
+		if err := grantGroupAccess(stagePoint, *grpID); err != nil {
+			return status.Errorf(codes.Internal, "failed to grant group access for volume %s: %v", device, err)
+		}
+	}
+	return nil
+}
+
+func (fs *fileSystem) Unstage(mountPoint string) error {
+	return umountFs(mountPoint, false)
+}
+
+func (fs *fileSystem) Publish(device, stagePoint, mountPoint string, readOnly bool) error {
+	flags := []string{"bind"}
+	if readOnly {
+		flags = append(flags, "ro")
+	}
+	return mountFs(stagePoint, mountPoint, "", flags, createDirectory)
+}
+
+func (fs *fileSystem) Unpublish(mountPoint string) error {
+	return umountFs(mountPoint, true)
+}
+
+func (fs *rawFilesystem) Make(_ string) error {
+	return nil
+}
+
+func (fs *rawFilesystem) Grow(_ string) error {
+	return nil
+}
+
+func (fs *rawFilesystem) Accepts(accessType VolumeAccessType) bool {
+	return accessType == BlockAccessType
+}
+
+func (fs *rawFilesystem) Stage(device, stagePoint string, flags []string, grpID *int) error {
+	if grpID != nil {
+		if err := grantGroupAccess(device, *grpID); err != nil {
+			return status.Errorf(codes.Internal, "failed to grant group access for volume %s: %v", device, err)
+		}
+	}
+	return nil
+}
+
+func (fs *rawFilesystem) Unstage(mountPoint string) error {
+	return nil
+}
+
+func (fs *rawFilesystem) Publish(device, stagePoint, mountPoint string, readOnly bool) error {
+	flags := []string{"bind"}
+	if readOnly {
+		flags = append(flags, "ro")
+	}
+	return mountFs(device, mountPoint, "", flags, createFile)
+}
+
+func (fs *rawFilesystem) Unpublish(mountPoint string) error {
+	return umountFs(mountPoint, true)
+}
+
+func grantGroupAccess(path string, groupID int) error {
+	// Search for files
+	err := filepath.WalkDir(path, func(file string, d os.DirEntry, err error) error {
+		return os.Chown(file, -1, groupID)
+	})
+	if err != nil {
+		return err
+	}
+	// Ensure root has full group access.
+	if err := os.Chmod(path, os.FileMode(0770)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func mountFs(source, mountPoint, fsName string, flags []string, mpAction mountPointAction) error {
+	mounter := mount.New("")
+	notMounted, err := mounter.IsLikelyNotMountPoint(mountPoint)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return status.Errorf(codes.Internal, "failed to determine if %s is mounted: %v", mountPoint, err)
 		}
-		if !create {
+		switch mpAction {
+		case requireExisting:
 			return status.Errorf(codes.Internal, "%s does not exist", mountPoint)
-		}
-		if err := os.MkdirAll(mountPoint, 0750); err != nil {
-			return status.Errorf(codes.Internal, "failed to mkdir %s: %v", mountPoint, err)
+		case createFile:
+			file, err := os.OpenFile(mountPoint, os.O_CREATE, os.FileMode(0640))
+			if err = file.Close(); err != nil {
+				return err
+			}
+			if err != nil {
+				if !os.IsExist(err) {
+					return status.Errorf(codes.Internal, "failed to create file %s: %v", mountPoint, err)
+				}
+			}
+		case createDirectory:
+			if err := os.MkdirAll(mountPoint, 0750); err != nil {
+				return status.Errorf(codes.Internal, "failed to mkdir %s: %v", mountPoint, err)
+			}
 		}
 		notMounted = true
 	}
 
 	if notMounted {
 		// Mount the filesystem.
-		err = fs.mounter.Mount(source, mountPoint, fs.fileSystem, flags)
+		err = mounter.Mount(source, mountPoint, fsName, flags)
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to mount: %v", err)
 		}
@@ -166,11 +227,7 @@ func (fs *fileSystem) Mount(source, mountPoint string, flags []string, create bo
 	return nil
 }
 
-func (fs *fileSystem) Umount(mountPoint string, delete bool) error {
-	return umountIfMounted(mountPoint, delete)
-}
-
-func umountIfMounted(targetPath string, delete bool) error {
+func umountFs(targetPath string, deleteMountPoint bool) error {
 	mounter := mount.New("")
 	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil && err == os.ErrNotExist {
@@ -182,7 +239,7 @@ func umountIfMounted(targetPath string, delete bool) error {
 			return status.Errorf(codes.Internal, "failed to unmount %q: %s", targetPath, err.Error())
 		}
 	}
-	if delete {
+	if deleteMountPoint {
 		if err = os.RemoveAll(targetPath); err != nil {
 			return status.Errorf(codes.Internal, "failed to remove %q: %s", targetPath, err.Error())
 		}

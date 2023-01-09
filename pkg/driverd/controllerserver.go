@@ -57,8 +57,7 @@ const (
 	MountAccessType VolumeAccessType = iota
 	BlockAccessType
 
-	BlockAccessFsName = "$raw"  // the $ prefix is to avoid colliding with a real filesystem name.
-	BindFsName        = "$bind" // the $ prefix is to avoid colliding with a real filesystem name.
+	BlockAccessFsName = "$raw" // the $ prefix is to avoid colliding with a real filesystem name.
 )
 
 var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct{}{
