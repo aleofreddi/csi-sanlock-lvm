@@ -30,6 +30,7 @@ const topologyKeyNode = "csi-sanlock-lvm/topology"
 var nodeCapabilities = map[csi.NodeServiceCapability_RPC_Type]struct{}{
 	csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME: {},
 	csi.NodeServiceCapability_RPC_EXPAND_VOLUME:        {},
+	csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP:   {},
 }
 
 type nodeServer struct {
@@ -91,22 +92,14 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if req.GetTargetPath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing target path")
 	}
-	if (req.GetVolumeCapability().GetBlock() == nil) == (req.GetVolumeCapability().GetMount() == nil) {
-		return nil, status.Error(codes.InvalidArgument, "inconsistent access type")
-	}
-
-	// Decode access type from request.
-	var accessType VolumeAccessType
-	if req.GetVolumeCapability().GetMount() != nil {
-		accessType = MountAccessType
-	} else {
-		accessType = BlockAccessType
+	accessType, err := getAccessType(req.GetVolumeCapability())
+	if err != nil {
+		return nil, err
 	}
 
 	mountFlags := make([]string, 0)
 	if accessType == MountAccessType {
 		mountFlags = append(mountFlags, "bind")
-		//req.GetVolumeCapability().GetMount().GetMountFlags()...)""
 		if req.GetReadonly() {
 			mountFlags = append(mountFlags, "ro")
 		} else {
@@ -116,7 +109,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// Mount.
 	fs, _ := ns.fsRegistry.GetFileSystem(BindFsName)
-	err := fs.Mount(req.GetStagingTargetPath(), req.GetTargetPath(), mountFlags, true)
+	err = fs.Mount(req.GetStagingTargetPath(), req.GetTargetPath(), mountFlags, true)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +145,20 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	if req.GetStagingTargetPath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing staging target path")
 	}
-
+	accessType, err := getAccessType(req.GetVolumeCapability())
+	if err != nil {
+		return nil, err
+	}
+	volumeGid := -1
+	if accessType == MountAccessType {
+		if volumeMountGroup := req.GetVolumeCapability().GetMount().GetVolumeMountGroup(); volumeMountGroup != "" {
+			var err error
+			volumeGid, err = strconv.Atoi(volumeMountGroup)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid volume mount group %q: %v", volumeMountGroup, err)
+			}
+		}
+	}
 	vol, err := NewVolumeRefFromID(req.GetVolumeId())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
@@ -162,14 +168,6 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	err = ns.volumeLock.LockVolume(ctx, *vol, defaultLockOp)
 	if err != nil {
 		return nil, err
-	}
-
-	// Decode access type from request
-	var accessType VolumeAccessType
-	if req.GetVolumeCapability().GetMount() != nil {
-		accessType = MountAccessType
-	} else {
-		accessType = BlockAccessType
 	}
 
 	// Retrieve the filesystem type for the volume.
@@ -194,20 +192,21 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	if !fs.Accepts(accessType) {
 		return nil, status.Error(codes.InvalidArgument, "incompatible access type for this volume")
 	}
-
 	mountFlags := make([]string, 0)
 	if accessType == MountAccessType {
 		mountFlags = append(mountFlags, req.GetVolumeCapability().GetMount().GetMountFlags()...)
-		//if req.GetReadonly() {
-		//	mountFlags = append(mountFlags, "ro")
-		//} else {
-		//	mountFlags = append(mountFlags, "rw")
-		//}
 	}
 
 	// Mount.
 	if err = fs.Mount(vol.DevPath(), req.GetStagingTargetPath(), mountFlags, false); err != nil {
 		return nil, err
+	}
+
+	// Update volume group if needed.
+	if volumeGid != -1 {
+		if err = fs.Chgrp(req.GetStagingTargetPath(), volumeGid); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to change group for volume %q: %v", vol, err)
+		}
 	}
 	return &csi.NodeStageVolumeResponse{}, nil
 }
@@ -321,6 +320,16 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	}
 
 	return &csi.NodeExpandVolumeResponse{}, nil
+}
+
+func getAccessType(volCap *csi.VolumeCapability) (VolumeAccessType, error) {
+	if (volCap.GetBlock() == nil) == (volCap.GetMount() == nil) {
+		return 0, status.Error(codes.InvalidArgument, "inconsistent access type")
+	}
+	if volCap.GetMount() != nil {
+		return MountAccessType, nil
+	}
+	return BlockAccessType, nil
 }
 
 func lvsVolume(ctx context.Context, client pb.LvmCtrldClient, vol VolumeRef) (*pb.LogicalVolume, error) {

@@ -34,6 +34,7 @@ type FileSystem interface {
 	Grow(device string) error
 	Mount(source, mountPoint string, flags []string, create bool) error
 	Umount(mountPoint string, delete bool) error
+	Chgrp(path string, grpID int) error
 }
 
 type fileSystemRegistry struct {
@@ -105,6 +106,10 @@ func (fs *bindFileSystem) Umount(mountPoint string, delete bool) error {
 	return umountIfMounted(mountPoint, delete)
 }
 
+func (fs *bindFileSystem) Chgrp(path string, grpID int) error {
+	return status.Error(codes.Internal, "Chgrp() is not implemented for bind filesystem")
+}
+
 func (fs *fileSystem) Make(device string) error {
 	mkfs := exec.Command("mkfs", "-t", fs.fileSystem, device)
 	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
@@ -168,6 +173,10 @@ func (fs *fileSystem) Mount(source, mountPoint string, flags []string, create bo
 
 func (fs *fileSystem) Umount(mountPoint string, delete bool) error {
 	return umountIfMounted(mountPoint, delete)
+}
+
+func (fs *fileSystem) Chgrp(path string, grpID int) error {
+	return os.Chown(path, -1, grpID)
 }
 
 func umountIfMounted(targetPath string, delete bool) error {

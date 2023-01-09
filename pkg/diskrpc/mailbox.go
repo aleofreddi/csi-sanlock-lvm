@@ -447,8 +447,8 @@ func (mb *mailBox) format(file *os.File, bSize int) error {
 	// Assemble and write STATE segments.
 	sBlocks := mb.toBlocks(bSize,
 		192+ /* reserved */
-				2000*4+ /* nodes head pointer */
-				len(alloc)*4 /* alloc tree */)
+			2000*4+ /* nodes head pointer */
+			len(alloc)*4 /* alloc tree */)
 	klog.Infof("Each state segment uses %d block(s)", sBlocks)
 	// Allocate the space used by HEADER and STATE segments.
 	addr, err := alloc.Alloc(1 /* header */ + 3*int32(sBlocks))
