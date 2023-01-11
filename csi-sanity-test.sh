@@ -39,6 +39,14 @@ shift $((OPTIND-1))
 
 [[ "$(uname | tr '[A-Z]' '[a-z]')" = linux ]] || die "$me requires a Linux machine"
 
+waitForSocket() {
+	while [[ ! -r "$1" ]]; do
+		printf .
+		sleep 1
+	done
+	echo
+}
+
 for i in \
     'csi-sanity:install using `go get github.com/kubernetes-csi/csi-test/cmd/csi-sanity`' \
     'fallocate:install the proper package' \
@@ -75,20 +83,21 @@ lvmctrld_sock="unix://$tmpdir/lvmctrld.sock"
 "$rootdir"/cmd/lvmctrld/lvmctrld --listen "$lvmctrld_sock" --no-lock -v "$verbosity" &
 rollback="echo Killing lvmctrld pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
 trap "(trap '' INT; $rollback)" EXIT
+echo Waiting for lvmctrld to spin up...
+waitForSocket "$tmpdir/lvmctrld.sock"
 
 driverd_sock="unix://$tmpdir/driverd.sock"
 "$rootdir"/cmd/driverd/driverd --lvmctrld "$lvmctrld_sock" --listen "$driverd_sock" -v "$verbosity" &
 rollback="echo Killing driverd pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
 trap "(trap '' INT; $rollback)" EXIT
+echo Waiting for driverd to spin up...
+waitForSocket "$tmpdir/driverd.sock"
 
 param_file="$tmpdir/params"
 cat > "$param_file" <<EOF
 filesystem: ext4
 volumeGroup: vg_csi_sanity_$$
 EOF
-
-# Give the driver some time to start.
-sleep 5
 
 csi-sanity \
     --csi.endpoint "$driverd_sock" \
