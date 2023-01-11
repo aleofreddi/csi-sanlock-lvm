@@ -53,7 +53,7 @@ You can use the provided `csi-sanlock-lvm-init` pod to initialize lvm as
 follows:
 
 ```shell
-kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.3/deploy/kubernetes/csi-sanlock-lvm-init.var.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.4/deploy/kubernetes/csi-sanlock-lvm-init.var.yaml"
 ```
 
 Then attach the init pod as follows and initialize the VG.
@@ -103,7 +103,7 @@ as needed):
 
 ```shell
 # Install the csi-sanlock-lvm driver.
-kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes?ref=v0.4.3"
+kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes?ref=v0.4.4"
 ```
 
 It might take up to 3 minutes for the csi plugin to become `Running` on each
