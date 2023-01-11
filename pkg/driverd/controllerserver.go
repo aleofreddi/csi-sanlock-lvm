@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"strings"
 
-	diskrpc "github.com/aleofreddi/csi-sanlock-lvm/pkg/diskrpc"
+	"github.com/aleofreddi/csi-sanlock-lvm/pkg/diskrpc"
 	pb "github.com/aleofreddi/csi-sanlock-lvm/pkg/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"

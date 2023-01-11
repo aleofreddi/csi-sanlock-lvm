@@ -38,7 +38,6 @@ func NewListener(addr string, is *identityServer, ns *nodeServer, cs *controller
 	if addr == "" {
 		return nil, fmt.Errorf("missing listen address")
 	}
-
 	return &Listener{
 		addr: addr,
 		is:   is,
