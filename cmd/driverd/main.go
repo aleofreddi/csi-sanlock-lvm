@@ -15,7 +15,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -52,11 +51,18 @@ func main() {
 }
 
 func bootstrap() (*driverd.Listener, error) {
+	// Start lvmctrld client.
+	client, err := driverd.NewLvmCtrldClient(*lvmctrld)
+	if err != nil {
+		return nil, fmt.Errorf("failed to instance lvmctrld client: %v", err)
+	}
+	// Wait for lvmctrld to be ready.
+	if err := client.Wait(); err != nil {
+		return nil, fmt.Errorf("lvmctrld startup failed: %v", err)
+	}
+
 	// Retrieve hostname.
-	var (
-		node string
-		err  error
-	)
+	var node string
 	if *nodeName != "" {
 		node = *nodeName
 	} else {
@@ -65,23 +71,18 @@ func bootstrap() (*driverd.Listener, error) {
 			return nil, fmt.Errorf("failed to retrieve hostname: %v", err)
 		}
 	}
-	// Setup lvmctrld client.
-	lvm, err := driverd.NewLvmCtrldClient(*lvmctrld)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instance lvmctrld client: %v", err)
-	}
-	// Setup lock manager.
-	vl, err := driverd.NewVolumeLocker(lvm, node)
+	// Start lock.
+	vl, err := driverd.NewVolumeLocker(client, node)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance volume lock: %v", err)
 	}
-	// Setup DiskRPC.
-	drpc, err := driverd.NewDiskRpcService(lvm, vl)
+	// Start DiskRPC
+	drpc, err := driverd.NewDiskRpcService(client, vl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance disk rpc service: %v", err)
 	}
-	// Setup CSI servers.
-	is, err := driverd.NewIdentityServer(*drvName, version, lvm)
+	// Instance servers.
+	is, err := driverd.NewIdentityServer(*drvName, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %v", err)
 	}
@@ -89,45 +90,22 @@ func bootstrap() (*driverd.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance filesystem registry: %v", err)
 	}
-	ns, err := driverd.NewNodeServer(lvm, vl, fsr)
+	ns, err := driverd.NewNodeServer(client, vl, fsr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %v", err)
 	}
-	cs, err := driverd.NewControllerServer(lvm, vl, drpc, *defaultFs)
+	cs, err := driverd.NewControllerServer(client, vl, drpc, *defaultFs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance controller server: %v", err)
 	}
-	// Start server.
+	// Start DiskRPC
+	if err := drpc.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start disk rpc: %v", err)
+	}
+	// Start server
 	listener, err := driverd.NewListener(*listen, is, ns, cs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance listener: %s", err.Error())
 	}
-	// Start services.
-	go func() {
-		klog.Infof("Starting services")
-		err := start(lvm, vl, drpc)
-		if err != nil {
-			klog.Fatalf("Startup failed: %v", err)
-		} else {
-			klog.Infof("Startup complete")
-		}
-	}()
 	return listener, nil
-}
-
-func start(lvm *driverd.LvmCtrldClientConnection, vl driverd.VolumeLocker, drpc driverd.DiskRpcService) error {
-	ctx := context.Background()
-	// Wait for lvmctrld to be ready.
-	if err := lvm.Wait(ctx); err != nil {
-		return fmt.Errorf("lvmctrld startup failed: %v", err)
-	}
-	// Start VolumeLocker.
-	if err := vl.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start disk rpc: %v", err)
-	}
-	// Start DiskRPC.
-	if err := drpc.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start disk rpc: %v", err)
-	}
-	return nil
 }

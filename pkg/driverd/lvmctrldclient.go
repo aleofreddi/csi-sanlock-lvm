@@ -27,8 +27,7 @@ import (
 
 type LvmCtrldClientConnection struct {
 	pb.LvmCtrldClient
-	conn  *grpc.ClientConn
-	ready bool
+	conn *grpc.ClientConn
 }
 
 func NewLvmCtrldClient(address string) (*LvmCtrldClientConnection, error) {
@@ -39,13 +38,12 @@ func NewLvmCtrldClient(address string) (*LvmCtrldClientConnection, error) {
 	return &LvmCtrldClientConnection{
 		LvmCtrldClient: pb.NewLvmCtrldClient(conn),
 		conn:           conn,
-		ready:          false,
 	}, nil
 }
 
-func (c *LvmCtrldClientConnection) Wait(ctx context.Context) error { // FIXME: add a timeout here!
+func (c *LvmCtrldClientConnection) Wait() error { // FIXME: add a timeout here!
 	for {
-		vgs, err := c.Vgs(ctx, &pb.VgsRequest{})
+		vgs, err := c.Vgs(context.Background(), &pb.VgsRequest{})
 		if err != nil {
 			klog.Infof("Failed to connect to lvmctrld (%s), retrying...", err.Error())
 			time.Sleep(1 * time.Second)
@@ -55,12 +53,7 @@ func (c *LvmCtrldClientConnection) Wait(ctx context.Context) error { // FIXME: a
 		break
 	}
 	klog.Infof("Connected to lvmctrld")
-	c.ready = true
 	return nil
-}
-
-func (c *LvmCtrldClientConnection) IsReady() bool {
-	return c.ready
 }
 
 func (c *LvmCtrldClientConnection) Close() error {
