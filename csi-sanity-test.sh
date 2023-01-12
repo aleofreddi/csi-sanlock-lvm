@@ -39,12 +39,23 @@ shift $((OPTIND-1))
 
 [[ "$(uname | tr '[A-Z]' '[a-z]')" = linux ]] || die "$me requires a Linux machine"
 
+waitForSocket() {
+	while [[ ! -r "$1" ]]; do
+		printf .
+		sleep 1
+	done
+	echo
+}
+
 for i in \
     'csi-sanity:install using `go get github.com/kubernetes-csi/csi-test/cmd/csi-sanity`' \
     'fallocate:install the proper package' \
     'losetup:install the proper package' \
     'pvcreate:install lvm tools' \
-    'vgcreate:install lvm tools'; do
+    'vgcreate:install lvm tools' \
+    './cmd/lvmctrld/lvmctrld:run "make" to build the driver' \
+    './cmd/driverd/driverd:run "make" to build the driver' \
+; do
     IFS=: read f d <<<"$i"
     which "$f" >/dev/null 2>&1 || die "$me requires $f, $d"
 done
@@ -69,14 +80,18 @@ lvcreate -L 512b -n rpc-lock --addtag csi-sanlock-lvm.vleo.net/rpcRole=lock vg_c
 lvcreate -L 8m -n rpc-data --addtag csi-sanlock-lvm.vleo.net/rpcRole=data vg_csi_sanity_$$ || die Failed to create rpc data logical volume
 
 lvmctrld_sock="unix://$tmpdir/lvmctrld.sock"
-"$rootdir"/lvmctrld/bin/lvmctrld --listen "$lvmctrld_sock" --no-lock -v "$verbosity" &
+"$rootdir"/cmd/lvmctrld/lvmctrld --listen "$lvmctrld_sock" --no-lock -v "$verbosity" &
 rollback="echo Killing lvmctrld pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
 trap "(trap '' INT; $rollback)" EXIT
+echo Waiting for lvmctrld to spin up...
+waitForSocket "$tmpdir/lvmctrld.sock"
 
 driverd_sock="unix://$tmpdir/driverd.sock"
-"$rootdir"/driverd/bin/driverd --lvmctrld "$lvmctrld_sock" --listen "$driverd_sock" -v "$verbosity" &
+"$rootdir"/cmd/driverd/driverd --lvmctrld "$lvmctrld_sock" --listen "$driverd_sock" -v "$verbosity" &
 rollback="echo Killing driverd pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
 trap "(trap '' INT; $rollback)" EXIT
+echo Waiting for driverd to spin up...
+waitForSocket "$tmpdir/driverd.sock"
 
 param_file="$tmpdir/params"
 cat > "$param_file" <<EOF

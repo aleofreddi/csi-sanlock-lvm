@@ -22,11 +22,12 @@ This project is in alpha state, YMMV.
     - Support single node read/write access
 - Online volume extension
 - Online snapshot support
+- Volume groups (fs groups)
 - ~~Ephemeral volumes~~ (TODO)
 
 ## Prerequisite
 
-- Kubernetes 1.17+
+- Kubernetes 1.20+
 - `kubectl`
 
 ## Limitations
@@ -52,10 +53,7 @@ You can use the provided `csi-sanlock-lvm-init` pod to initialize lvm as
 follows:
 
 ```shell
-# Extract the kubernetes major.minor version, ex. 1.19.
-kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
-
-kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.3/deploy/kubernetes-$kver/csi-sanlock-lvm-init.var.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/aleofreddi/csi-sanlock-lvm/v0.4.4/deploy/kubernetes/csi-sanlock-lvm-init.var.yaml"
 ```
 
 Then attach the init pod as follows and initialize the VG.
@@ -104,11 +102,8 @@ And then deploy using `kustomization` (adjust the kubernetes version in the link
 as needed):
 
 ```shell
-# Extract the kubernetes major.minor version.
-kver="$(kubectl version -o json | jq -r '.serverVersion.major + "." + .serverVersion.minor')"
-
 # Install the csi-sanlock-lvm driver.
-kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes-$kver?ref=v0.4.3"
+kubectl apply -k "https://github.com/aleofreddi/csi-sanlock-lvm/deploy/kubernetes?ref=v0.4.4"
 ```
 
 It might take up to 3 minutes for the csi plugin to become `Running` on each
@@ -153,8 +148,7 @@ The following volume snapshot class parameters are supported:
   size;
 - `maxSize` _(optional)_: maximum snapshot size.
 
-If multiple maximum size settings are provided, the snapshot will use the least
-one.
+If both `maxSizePct` and `maxSize` are set, the strictest is applied.
 
 ## Example application
 
@@ -180,13 +174,13 @@ To build the project, you need:
 * A recent version of the golang compiler;
 * GNU make;
 * protoc compiler;
-* protoc-gen-go;
+* protoc-gen-go and protoc-gen-go-grpc;
 * [gomock](https://github.com/golang/mock).
 
 You can install protoc-gen-go and gomock as follows:
 
 ```shell
-go install github.com/golang/protobuf/protoc-gen-go github.com/golang/mock/mockgen
+go install github.com/golang/protobuf/protoc-gen-go google.golang.org/grpc/cmd/protoc-gen-go-grpc github.com/golang/mock/mockgen
 ```
 
 ### Build binaries
