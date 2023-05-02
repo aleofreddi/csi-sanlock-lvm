@@ -206,8 +206,16 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
 
+	// Use shared mode
+	shared := false
+	if req.VolumeCapability.AccessMode.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
+		req.VolumeCapability.AccessMode.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+		req.VolumeCapability.AccessMode.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER {
+		shared = true
+	}
+
 	// Lock the volume.
-	err = ns.volumeLock.LockVolume(ctx, *vol, defaultLockOp)
+	err = ns.volumeLock.LockVolume(ctx, *vol, shared, defaultLockOp)
 	if err != nil {
 		return nil, err
 	}

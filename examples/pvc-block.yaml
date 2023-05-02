@@ -18,7 +18,7 @@ metadata:
   name: test-block-pvc
 spec:
   accessModes:
-  - ReadWriteOnce
+  - ReadWriteMany
   volumeMode: Block
   resources:
     requests:
