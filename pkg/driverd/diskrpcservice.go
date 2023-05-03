@@ -50,7 +50,7 @@ type volumeLockerAdapter struct {
 
 func (vl *volumeLockerAdapter) Lock() {
 	for delay := 1 * time.Second; ; {
-		err := vl.locker.LockVolume(vl.ctx, vl.vol, diskRpcOp)
+		err := vl.locker.LockVolume(vl.ctx, vl.vol, false, diskRpcOp)
 		if err == nil {
 			return
 		}

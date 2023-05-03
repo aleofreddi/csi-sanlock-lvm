@@ -206,8 +206,16 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
 
+	// Use shared mode
+	shared := false
+	if req.VolumeCapability.AccessMode.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
+		req.VolumeCapability.AccessMode.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+		req.VolumeCapability.AccessMode.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER {
+		shared = true
+	}
+
 	// Lock the volume.
-	err = ns.volumeLock.LockVolume(ctx, *vol, defaultLockOp)
+	err = ns.volumeLock.LockVolume(ctx, *vol, shared, defaultLockOp)
 	if err != nil {
 		return nil, err
 	}
@@ -335,10 +343,30 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
 	}
-
 	// Issue the resize if the logical volume is smaller than required bytes
 	requiredBytes := uint64(req.CapacityRange.RequiredBytes)
 	if lv.LvSize < requiredBytes {
+
+		// Shared volumes have no owner tag
+		if _, ownerTag := tags[ownerNodeTagKey]; !ownerTag {
+			defer func() {
+				// Re-lock the volume into shared mode.
+				_, _ = ns.lvmctrld.LvChange(ctx, &pb.LvChangeRequest{
+					Target:   []string{vol.VgLv()},
+					Activate: pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_SHARED,
+				})
+			}()
+
+			// Re-lock the volume in exclusive mode.
+			_, err = ns.lvmctrld.LvChange(ctx, &pb.LvChangeRequest{
+				Target:   []string{vol.VgLv()},
+				Activate: pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
+			})
+			if err != nil {
+				return nil, status.Errorf(status.Code(err), "failed to lock volume %s: %v", vol, err)
+			}
+		}
+
 		_, err = ns.lvmctrld.LvResize(ctx, &pb.LvResizeRequest{VgName: vol.Vg(), LvName: vol.Lv(), Size: requiredBytes})
 		if status.Code(err) == codes.OutOfRange {
 			return nil, status.Errorf(codes.OutOfRange, "insufficient free space")

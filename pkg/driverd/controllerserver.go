@@ -152,7 +152,9 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "missing access mode")
 	}
 	if *accessMode != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER && *accessMode != csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY {
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported access mode %s", *accessMode)
+		if *accessMode != csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER && *accessMode != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY && *accessMode != csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER && fsName != BlockAccessFsName {
+			return nil, status.Errorf(codes.InvalidArgument, "unsupported access mode %s", *accessMode)
+		}
 	}
 	if fsName == "" {
 		fsName = cs.defaultFs
@@ -259,7 +261,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		klog.V(3).Infof("Trying to acquire lock on %q to read source data", lockVol)
 		// We add a uuid because we don't want this lock to be reentrant.
 		lockId := fmt.Sprintf("CreateVolume(%s,%s)", vol, uuid.New().String())
-		err = cs.volumeLock.LockVolume(ctx, lockVol.VolumeRef, lockId)
+		err = cs.volumeLock.LockVolume(ctx, lockVol.VolumeRef, false, lockId)
 		if status.Code(err) == codes.PermissionDenied {
 			ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, lockVol.VolumeRef)
 			if err != nil {
@@ -342,7 +344,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	cleanupVols[vol.VgLv()] = struct{}{}
 	// Now lock the new volume
 	lockId := fmt.Sprintf("CreateVolume(%s,%s)", vol, uuid.New().String())
-	if err := cs.volumeLock.LockVolume(ctx, *vol, lockId); err != nil {
+	if err := cs.volumeLock.LockVolume(ctx, *vol, false, lockId); err != nil {
 		return nil, err
 	}
 	defer cs.tryVolumeUnlock(ctx, *vol, lockId)
@@ -658,7 +660,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	// Acquire exclusive lock on orig, or delegate to owner node if already locked
 	// We add a uuid because we don't want this lock to be reentrant.
 	lockId := fmt.Sprintf("CreateSnapshot(%s,%s)", snap, uuid.New().String())
-	err = cs.volumeLock.LockVolume(ctx, *orig, lockId)
+	err = cs.volumeLock.LockVolume(ctx, *orig, false, lockId)
 	if status.Code(err) == codes.PermissionDenied {
 		ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, *orig)
 		if err != nil {
@@ -772,7 +774,7 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	// Acquire exclusive lock on orig, or delegate to owner node if already locked
 	// We add a uuid because we don't want this lock to be reentrant.
 	lockId := fmt.Sprintf("DeleteSnapshot(%s,%s)", snap, uuid.New().String())
-	err = cs.volumeLock.LockVolume(ctx, lockVol.VolumeRef, lockId)
+	err = cs.volumeLock.LockVolume(ctx, lockVol.VolumeRef, false, lockId)
 	if status.Code(err) == codes.PermissionDenied {
 		ownerId, ownerNode, err := cs.volumeLock.GetOwner(ctx, *orig)
 		if err != nil {

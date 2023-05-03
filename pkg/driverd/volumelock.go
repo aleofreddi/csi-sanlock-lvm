@@ -32,7 +32,7 @@ type VolumeLocker interface {
 	//
 	// Volume locks are reentrant per volume (but not per <volume, op> pairs),
 	// that is one can lock the same volume with multiple ops.
-	LockVolume(ctx context.Context, vol VolumeRef, op string) error
+	LockVolume(ctx context.Context, vol VolumeRef, shared bool, op string) error
 
 	// Unlock a volume for a given <vol, op> pair.
 	UnlockVolume(ctx context.Context, vol VolumeRef, op string) error
@@ -71,7 +71,7 @@ func NewVolumeLocker(lvmctrld pb.LvmCtrldClient, nodeName string) (VolumeLocker,
 	return vl, nil
 }
 
-func (vl *volumeLocker) LockVolume(ctx context.Context, vol VolumeRef, op string) error {
+func (vl *volumeLocker) LockVolume(ctx context.Context, vol VolumeRef, shared bool, op string) error {
 	vl.mutex.Lock()
 	defer vl.mutex.Unlock()
 
@@ -86,27 +86,34 @@ func (vl *volumeLocker) LockVolume(ctx context.Context, vol VolumeRef, op string
 		return nil
 	}
 
+	mode := proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE
+	if shared {
+		mode = proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_SHARED
+	}
+
 	// Lock the volume.
 	_, err := vl.lvmctrld.LvChange(ctx, &proto.LvChangeRequest{
 		Target:   []string{vol.VgLv()},
-		Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE,
+		Activate: mode,
 	})
 	if err != nil {
 		return status.Errorf(status.Code(err), "failed to lock volume %s: %v", vol, err)
 	}
 
 	// Update tags.
-	err = vl.setOwner(ctx, vol, &vl.nodeID, &vl.nodeName)
-	if err != nil {
-		// Try to unlock the volume.
-		_, err2 := vl.lvmctrld.LvChange(ctx, &proto.LvChangeRequest{
-			Target:   []string{vol.VgLv()},
-			Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_DEACTIVATE,
-		})
-		if err2 != nil {
-			klog.Errorf("Failed to unlock volume %s: %v (ignoring error)", vol, err2)
+	if !shared {
+		err = vl.setOwner(ctx, vol, &vl.nodeID, &vl.nodeName)
+		if err != nil {
+			// Try to unlock the volume.
+			_, err2 := vl.lvmctrld.LvChange(ctx, &proto.LvChangeRequest{
+				Target:   []string{vol.VgLv()},
+				Activate: proto.LvActivationMode_LV_ACTIVATION_MODE_DEACTIVATE,
+			})
+			if err2 != nil {
+				klog.Errorf("Failed to unlock volume %s: %v (ignoring error)", vol, err2)
+			}
+			return status.Errorf(status.Code(err), "failed to update owner tags on volume %s: %v", vol, err)
 		}
-		return status.Errorf(status.Code(err), "failed to update owner tags on volume %s: %v", vol, err)
 	}
 
 	m[op] = struct{}{}
