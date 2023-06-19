@@ -3,6 +3,7 @@ module github.com/aleofreddi/csi-sanlock-lvm
 go 1.18
 
 require (
+	github.com/Storytel/gomock-matchers v1.3.0
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
@@ -12,6 +13,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0
 	github.com/ncw/directio v1.0.5
 	github.com/pkg/math v0.0.0-20141027224758-f2ed9e40e245
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	golang.org/x/net v0.4.0
 	google.golang.org/grpc v1.51.0
 	google.golang.org/protobuf v1.28.1

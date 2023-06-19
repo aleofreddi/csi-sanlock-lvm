@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -40,7 +41,8 @@ const (
 	maxSizePctParamKey = "maxSizePct"
 	vgParamKey         = "volumeGroup"
 
-	DefaultCapacity = 1 << 20
+	// Default volume capacity.
+	defaultCapacity = 1 << 20
 
 	// DiskRPC channel.
 	controllerServerDiskRPCID diskrpc.Channel = 0
@@ -71,14 +73,37 @@ var controllerCapabilities = map[csi.ControllerServiceCapability_RPC_Type]struct
 	// See https://github.com/container-storage-interface/spec/blob/master/spec.md#listvolumes
 }
 
+// Volume capability compatibility map. This map declares for each access mode by supported by this
+// driver, all the compatible, narrower access modes.
+var volCapAccessModeCompat = map[csi.VolumeCapability_AccessMode_Mode]map[csi.VolumeCapability_AccessMode_Mode]interface{}{
+	csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER: {
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER:  nil,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER: nil,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:        nil,
+	},
+	csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY: {
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY: nil,
+	},
+	csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER: {
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER: nil,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:       nil,
+	},
+	csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER: {
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER:  nil,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER: nil,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:        nil,
+	},
+}
+
 type controllerServer struct {
 	baseServer
 	volumeLock VolumeLocker
 	diskRpc    diskrpc.DiskRpc
+	fsRegistry FileSystemRegistry
 	defaultFs  string
 }
 
-func NewControllerServer(lvmctrld pb.LvmCtrldClient, volumeLock VolumeLocker, diskRpc diskrpc.DiskRpc, defaultFs string) (*controllerServer, error) {
+func NewControllerServer(lvmctrld pb.LvmCtrldClient, volumeLock VolumeLocker, diskRpc diskrpc.DiskRpc, fsRegistry FileSystemRegistry, defaultFs string) (*controllerServer, error) {
 	bs, err := newBaseServer(lvmctrld)
 	if err != nil {
 		return nil, err
@@ -87,6 +112,7 @@ func NewControllerServer(lvmctrld pb.LvmCtrldClient, volumeLock VolumeLocker, di
 		baseServer: *bs,
 		volumeLock: volumeLock,
 		diskRpc:    diskRpc,
+		fsRegistry: fsRegistry,
 		defaultFs:  defaultFs,
 	}
 	if err = diskRpc.Register(controllerServerDiskRPCID, cs); err != nil {
@@ -112,7 +138,7 @@ func (cs *controllerServer) ControllerGetCapabilities(_ context.Context, _ *csi.
 }
 
 func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	// Check arguments
+	// Check arguments.
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume name")
 	}
@@ -120,55 +146,42 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "missing volume capabilities")
 	}
 
-	// Parse capabilities
-	var accessMode *csi.VolumeCapability_AccessMode_Mode
-	var fsName string
-	for _, cpb := range req.GetVolumeCapabilities() {
-		var capAccessMode *csi.VolumeCapability_AccessMode_Mode
-		if cpb.GetAccessMode() != nil {
-			v := cpb.GetAccessMode().GetMode()
-			capAccessMode = &v
-		}
-		if capAccessMode != nil {
-			if accessMode != nil && *capAccessMode != *accessMode {
-				return nil, status.Errorf(codes.InvalidArgument, "inconsistent access mode: both %s and %s specified", *capAccessMode, *accessMode)
-			} else {
-				accessMode = capAccessMode
-			}
-		}
-		if m := cpb.GetMount(); m != nil {
-			if fsName != "" && fsName != m.GetFsType() {
-				return nil, status.Error(codes.InvalidArgument, "inconsistent volume access types")
-			}
-			fsName = m.GetFsType()
-		} else if cpb.GetBlock() != nil {
-			if fsName != "" && fsName != BlockAccessFsName {
-				return nil, status.Error(codes.InvalidArgument, "inconsistent volume access types")
-			}
-			fsName = BlockAccessFsName
-		}
+	// Parse capabilities.
+	cap, err2 := reduceVolumeCapabilities(req.GetVolumeCapabilities())
+	if err2 != nil {
+		return nil, err2
 	}
-	if accessMode == nil {
-		return nil, status.Error(codes.InvalidArgument, "missing access mode")
-	}
-	if *accessMode != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER && *accessMode != csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY {
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported access mode %s", *accessMode)
-	}
-	if fsName == "" {
-		fsName = cs.defaultFs
+	fsName := cs.defaultFs
+	if cap.GetBlock() != nil {
+		fsName = BlockAccessFsName
 	}
 
-	// Parse parameters
+	// Parse parameters.
 	vgName, present := req.Parameters[vgParamKey]
 	if !present || vgName == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing volume group parameter")
+		return nil, status.Errorf(codes.InvalidArgument, "missing %s parameter", vgParamKey)
 	}
 	if !vgRe.MatchString(vgName) {
-		return nil, status.Error(codes.InvalidArgument, "invalid volume group parameter")
+		return nil, status.Errorf(codes.InvalidArgument, "invalid %s parameter", vgParamKey)
 	}
-	size := uint64(req.GetCapacityRange().GetRequiredBytes())
-	if size == 0 {
-		size = DefaultCapacity
+
+	// Compute volume size.
+	size := uint64(0)
+	if req.GetCapacityRange() != nil {
+		if req.GetCapacityRange().GetRequiredBytes() > 0 {
+			size = uint64(req.GetCapacityRange().GetRequiredBytes())
+			size = (size + 511) / 512 * 512
+			if req.GetCapacityRange().GetLimitBytes() > 0 && size > uint64(req.GetCapacityRange().GetLimitBytes()) {
+				return nil, status.Errorf(codes.InvalidArgument, "unsatisfiable volume capacity range: required %d bytes <= size %d bytes <= limit %d bytes", req.GetCapacityRange().GetRequiredBytes(), size, req.GetCapacityRange().GetLimitBytes())
+			}
+		} else if req.GetCapacityRange().GetLimitBytes() > 0 {
+			size = uint64(req.GetCapacityRange().GetLimitBytes())
+			size = (size - 511) / 512 * 512
+		} else {
+			return nil, status.Error(codes.InvalidArgument, "missing volume capacity range")
+		}
+	} else {
+		size = defaultCapacity
 	}
 
 	vol := NewVolumeRefFromVgTypeName(vgName, VolumeVolType, req.GetName())
@@ -232,10 +245,17 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
-	// Retrieve filesystem
-	fs, err := NewFileSystem(fsName)
+	// Retrieve filesystem.
+	fs, err := cs.fsRegistry.GetFileSystem(fsName)
 	if err != nil {
 		return nil, err
+	}
+	at := MountAccessType
+	if cap.GetBlock() != nil {
+		at = BlockAccessType
+	}
+	if !fs.Accepts(at) {
+		return nil, status.Error(codes.InvalidArgument, "filesystem is not compatible with the given access type")
 	}
 
 	// Create a map of temporary filesystems
@@ -252,7 +272,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}()
 
-	// Create a temporary snapshot from src volume, if specified
+	// Create a temporary snapshot from src volume, if specified.
 	var dataVol *VolumeRef
 	if lockVol != nil {
 		// Try to acquire exclusive lock on orig, or delegate to owner node if already locked.
@@ -402,7 +422,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      vol.ID(),
-			CapacityBytes: req.GetCapacityRange().GetRequiredBytes(),
+			CapacityBytes: int64(size),
 			VolumeContext: req.GetParameters(),
 			ContentSource: req.GetVolumeContentSource(),
 			//AccessibleTopology: (use vgname here)
@@ -927,4 +947,39 @@ func nodeIDFromString(node string) (uint16, error) {
 		return 0, fmt.Errorf("invalid node id %q: %v", node, err)
 	}
 	return uint16(nodeID), nil
+}
+
+func reduceVolumeCapabilities(capabilities []*csi.VolumeCapability) (*csi.VolumeCapability, error) {
+	// Aggregate capabilities.
+	var aggCapability *csi.VolumeCapability
+	for _, currCapability := range capabilities {
+		if aggCapability == nil {
+			aggCapability = currCapability
+			// Initial validations.
+			_, ok := volCapAccessModeCompat[aggCapability.AccessMode.Mode]
+			if !ok {
+				return nil, status.Errorf(codes.InvalidArgument, "unsupported access mode %s", aggCapability.AccessMode.Mode)
+			}
+			continue
+		}
+		// Aggregate access modes.
+		aggAccessMode := aggCapability.AccessMode.Mode
+		currAccessMode := currCapability.AccessMode.Mode
+		if _, ok := volCapAccessModeCompat[aggAccessMode][currAccessMode]; !ok {
+			if m, ok := volCapAccessModeCompat[currAccessMode]; !ok {
+				return nil, status.Errorf(codes.InvalidArgument, "unsupported access mode %s", currAccessMode)
+			} else {
+				if _, ok := m[aggAccessMode]; !ok {
+					return nil, status.Errorf(codes.InvalidArgument, "incompatible access mode specified: %s, %s", aggAccessMode, currAccessMode)
+				}
+				// Current access mode is broader than result's one, upgrade.
+				aggCapability.AccessMode = currCapability.AccessMode
+			}
+		}
+		// Aggregate mount.
+		if !reflect.DeepEqual(aggCapability.GetAccessType(), currCapability.GetAccessType()) {
+			return nil, status.Errorf(codes.InvalidArgument, "inconsistent volume access types")
+		}
+	}
+	return aggCapability, nil
 }

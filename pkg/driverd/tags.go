@@ -16,7 +16,10 @@ package driverd
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"golang.org/x/exp/maps"
 )
 
 type TagKey string
@@ -69,10 +72,15 @@ func encodeTagKeyPrefix(key TagKey) string {
 }
 
 func encodeTags(tags map[TagKey]string) []string {
+	// Sort keys to get a deterministic result.
+	keys := maps.Keys(tags)
+	sort.Slice(keys, func(t, u int) bool {
+		return keys[t] < keys[u]
+	})
 	r := make([]string, len(tags))
 	i := 0
-	for key, value := range tags {
-		r[i] = encodeTagKV(key, value)
+	for _, key := range keys {
+		r[i] = encodeTagKV(key, tags[key])
 		i++
 	}
 	return r

@@ -94,7 +94,7 @@ func bootstrap() (*driverd.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %v", err)
 	}
-	cs, err := driverd.NewControllerServer(client, vl, drpc, *defaultFs)
+	cs, err := driverd.NewControllerServer(client, vl, drpc, fsr, *defaultFs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance controller server: %v", err)
 	}
