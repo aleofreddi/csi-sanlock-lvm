@@ -171,7 +171,7 @@ kubectl apply -f examples/snap.yaml
 
 To build the project, you need:
 
-* A recent version of the golang compiler;
+* Golang ≥1.20;
 * GNU make;
 * protoc compiler;
 * protoc-gen-go and protoc-gen-go-grpc;
