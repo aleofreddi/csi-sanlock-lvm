@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.17 AS builder
+FROM golang:1.20 AS builder
 
 RUN apt-get update \
     && apt-get install -y protobuf-compiler gettext-base

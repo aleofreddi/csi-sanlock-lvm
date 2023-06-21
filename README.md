@@ -38,7 +38,7 @@ some time.
 Also, Sanlock requires every cluster node to get an unique integer in the range
 1-2000. This is implemented using least significant bits of the node ip address,
 which works as long as all the nodes reside in a subnet that contains at most
-2000 addresses (a `/22` subnet or smaller).
+2000 addresses (a `/22` subnet or larger).
 
 ## Installation
 
@@ -98,8 +98,7 @@ accommodate the driver:
 kubectl create namespace csi-sanlock-lvm-system
 ```
 
-And then deploy using `kustomization` (adjust the kubernetes version in the link
-as needed):
+And then deploy using `kustomization`:
 
 ```shell
 # Install the csi-sanlock-lvm driver.
@@ -114,7 +113,7 @@ be `4/4`). To check the current status you can use the following command:
 kubectl -n csi-sanlock-lvm-system get pod
 ```
 
-You should get an output similar to:
+Each node will should have its own `csi-sanlock-lvm-plugin` pod. You should get an output similar to:
 
 ```
 NAME                            READY   STATUS    RESTARTS   AGE
@@ -171,7 +170,7 @@ kubectl apply -f examples/snap.yaml
 
 To build the project, you need:
 
-* A recent version of the golang compiler;
+* Golang ≥1.20;
 * GNU make;
 * protoc compiler;
 * protoc-gen-go and protoc-gen-go-grpc;

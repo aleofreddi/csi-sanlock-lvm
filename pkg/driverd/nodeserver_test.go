@@ -18,9 +18,11 @@ import (
 	"context"
 	"errors"
 	"github.com/aleofreddi/csi-sanlock-lvm/pkg/proto/prototest"
+	"google.golang.org/protobuf/testing/protocmp"
 	"reflect"
 	"testing"
 
+	"github.com/Storytel/gomock-matchers"
 	"github.com/aleofreddi/csi-sanlock-lvm/pkg/driverd"
 	"github.com/aleofreddi/csi-sanlock-lvm/pkg/mock"
 	pb "github.com/aleofreddi/csi-sanlock-lvm/pkg/proto"
@@ -28,7 +30,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestNewNodeServer(t *testing.T) {
@@ -1134,15 +1135,15 @@ func MustVolumeRefFromID(volumeID string) *driverd.VolumeRef {
 	return id
 }
 
-func expectLockVolume(_ *testing.T, locker *mock.MockVolumeLocker, ref driverd.VolumeRef, op string, err error) *gomock.Call {
+func expectLockVolume(_ *testing.T, locker *mock.MockVolumeLocker, ref driverd.VolumeRef, opRe string, err error) *gomock.Call {
 	return locker.EXPECT().
-		LockVolume(gomock.Any(), ref, op).
+		LockVolume(gomock.Any(), ref, matchers.Regexp(opRe)).
 		Return(err)
 }
 
-func expectUnlockVolume(_ *testing.T, locker *mock.MockVolumeLocker, ref driverd.VolumeRef, op string, err error) *gomock.Call {
+func expectUnlockVolume(_ *testing.T, locker *mock.MockVolumeLocker, ref driverd.VolumeRef, opRe string, err error) *gomock.Call {
 	return locker.EXPECT().
-		UnlockVolume(gomock.Any(), ref, op).
+		UnlockVolume(gomock.Any(), ref, matchers.Regexp(opRe)).
 		Return(err)
 }
 

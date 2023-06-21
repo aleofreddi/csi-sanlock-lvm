@@ -221,9 +221,6 @@ func Test_volumeLocker_LockVolume(t *testing.T) {
 				fields.lvmctrld,
 				fields.nodeName,
 			)
-			if err := vl.Start(tt.args.ctx); err != nil {
-				t.Fatalf("Start() error = %v, want none", err)
-			}
 			err := vl.LockVolume(
 				tt.args.ctx,
 				tt.args.vol,

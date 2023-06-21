@@ -15,13 +15,16 @@
 package driverd_test
 
 import (
+	"github.com/aleofreddi/csi-sanlock-lvm/pkg/proto/prototest"
 	"reflect"
 	"testing"
 
-	diskrpc "github.com/aleofreddi/csi-sanlock-lvm/pkg/diskrpc"
+	"github.com/aleofreddi/csi-sanlock-lvm/pkg/diskrpc"
+	"github.com/aleofreddi/csi-sanlock-lvm/pkg/driverd"
 	pkg "github.com/aleofreddi/csi-sanlock-lvm/pkg/driverd"
-	mock "github.com/aleofreddi/csi-sanlock-lvm/pkg/mock"
+	"github.com/aleofreddi/csi-sanlock-lvm/pkg/mock"
 	"github.com/aleofreddi/csi-sanlock-lvm/pkg/proto"
+	pb "github.com/aleofreddi/csi-sanlock-lvm/pkg/proto"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"golang.org/x/net/context"
@@ -30,11 +33,461 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
+func Test_controllerServer_CreateVolume(t *testing.T) {
+	req := &csi.CreateVolumeRequest{
+		Name: "volume1@vg00",
+		CapacityRange: &csi.CapacityRange{
+			RequiredBytes: 1 << 20,
+			LimitBytes:    1 << 20,
+		},
+		VolumeCapabilities: []*csi.VolumeCapability{
+			{
+				AccessType: &csi.VolumeCapability_Mount{
+					Mount: &csi.VolumeCapability_MountVolume{
+						VolumeMountGroup: "1000",
+						MountFlags:       []string{"noatime"},
+					},
+				},
+				AccessMode: &csi.VolumeCapability_AccessMode{
+					Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+				},
+			},
+		},
+		Parameters: map[string]string{
+			"volumeGroup": "vg00",
+		},
+	}
+	type deps struct {
+		lvmctrld     pb.LvmCtrldClient
+		volumeLocker driverd.VolumeLocker
+		diskRpc      diskrpc.DiskRpc
+		fsRegistry   driverd.FileSystemRegistry
+		defaultFs    string
+	}
+	type args struct {
+		ctx context.Context
+		req *csi.CreateVolumeRequest
+	}
+	tests := []struct {
+		name        string
+		setup       func(controller *gomock.Controller) *deps
+		args        args
+		want        *csi.CreateVolumeResponse
+		wantErr     bool
+		wantErrCode codes.Code
+	}{
+		{
+			"Should fail when VolumeId is missing",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Without(req, "Name"),
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when VolumeCapabilities is missing",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Without(req, "VolumeCapabilities"),
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when filesystem doesn't accept access type",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Merge(req,
+					&csi.CreateVolumeRequest{
+						VolumeCapabilities: []*csi.VolumeCapability{
+							{
+								AccessType: &csi.VolumeCapability_Mount{
+									Mount: &csi.VolumeCapability_MountVolume{
+										FsType:           "raw",
+										MountFlags:       []string{"noatime"},
+										VolumeMountGroup: "1000",
+									},
+								},
+								AccessMode: &csi.VolumeCapability_AccessMode{
+									Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+								},
+							},
+						},
+					},
+				),
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when capacity range is not satisfiable (required = limit, not aligned)",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Merge(req,
+					&csi.CreateVolumeRequest{
+						CapacityRange: &csi.CapacityRange{
+							RequiredBytes: 1<<20 + 1,
+							LimitBytes:    1<<20 + 1,
+						},
+					},
+				),
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when capacity range is not satisfiable (required != limit, not 512 multiple in between)",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Merge(req,
+					&csi.CreateVolumeRequest{
+						CapacityRange: &csi.CapacityRange{
+							RequiredBytes: 1<<20 + 1,
+							LimitBytes:    1<<20 + 511,
+						},
+					},
+				),
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when lvcreate fails (not found)",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fs := mock.NewMockFileSystem(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
+					expectFsAccepts(t, fs, pkg.MountAccessType, true),
+					expectLvCreate(t, client, "vg00", "csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk", 1<<20+512, []string{"csi-sanlock-lvm.vleo.net/fs=ext4", "csi-sanlock-lvm.vleo.net/name=volume1&40vg00"}, "", pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE, status.Error(codes.ResourceExhausted, "not found")),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Merge(req,
+					&csi.CreateVolumeRequest{
+						CapacityRange: &csi.CapacityRange{
+							RequiredBytes: 1<<20 + 1,
+							LimitBytes:    1<<20 + 4096,
+						},
+					},
+				),
+			},
+			nil,
+			true,
+			codes.ResourceExhausted,
+		},
+		{
+			"Should fail and rollback when volume lock fails",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fs := mock.NewMockFileSystem(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
+					expectFsAccepts(t, fs, pkg.MountAccessType, true),
+					expectLvCreate(t, client, "vg00", "csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk", 1<<20+512, []string{"csi-sanlock-lvm.vleo.net/fs=ext4", "csi-sanlock-lvm.vleo.net/name=volume1&40vg00"}, "", pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE, nil),
+					expectLockVolume(t, locker, *MustVolumeRefFromID("csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00"), "CreateVolume\\(csl-v-WMqg\\+\\+utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00,.*\\)", status.Error(codes.Internal, "internal error")),
+					expectLvRemove(t, client, []string{"vg00/csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk"}, nil),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Merge(req,
+					&csi.CreateVolumeRequest{
+						CapacityRange: &csi.CapacityRange{
+							RequiredBytes: 1<<20 + 1,
+							LimitBytes:    1<<20 + 4096,
+						},
+					},
+				),
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should fail and rollback when mkfs fails",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fs := mock.NewMockFileSystem(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
+					expectFsAccepts(t, fs, pkg.MountAccessType, true),
+					expectLvCreate(t, client, "vg00", "csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk", 1<<20+512, []string{"csi-sanlock-lvm.vleo.net/fs=ext4", "csi-sanlock-lvm.vleo.net/name=volume1&40vg00"}, "", pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE, nil),
+					expectLockVolume(t, locker, *MustVolumeRefFromID("csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00"), "CreateVolume\\(csl-v-WMqg\\+\\+utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00,.*\\)", nil),
+					expectFsMake(t, fs, "/dev/vg00/csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk", status.Error(codes.Internal, "internal error")),
+					expectUnlockVolume(t, locker, *MustVolumeRefFromID("csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00"), "CreateVolume\\(csl-v-WMqg\\+\\+utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00,.*\\)", status.Error(codes.NotFound, "not found")),
+					expectLvRemove(t, client, []string{"vg00/csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk"}, nil),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Merge(req,
+					&csi.CreateVolumeRequest{
+						CapacityRange: &csi.CapacityRange{
+							RequiredBytes: 1<<20 + 1,
+							LimitBytes:    1<<20 + 4096,
+						},
+					},
+				),
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should round up size to the nearest multiple of 512",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fs := mock.NewMockFileSystem(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
+					expectFsAccepts(t, fs, pkg.MountAccessType, true),
+					expectLvCreate(t, client, "vg00", "csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk", 1<<20+512, []string{"csi-sanlock-lvm.vleo.net/fs=ext4", "csi-sanlock-lvm.vleo.net/name=volume1&40vg00"}, "", pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE, nil),
+					expectLockVolume(t, locker, *MustVolumeRefFromID("csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00"), "CreateVolume\\(csl-v-WMqg\\+\\+utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00,.*\\)", nil),
+					expectFsMake(t, fs, "/dev/vg00/csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk", nil),
+					expectUnlockVolume(t, locker, *MustVolumeRefFromID("csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00"), "CreateVolume\\(csl-v-WMqg\\+\\+utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00,.*\\)", nil),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Merge(req,
+					&csi.CreateVolumeRequest{
+						CapacityRange: &csi.CapacityRange{
+							RequiredBytes: 1<<20 + 1,
+							LimitBytes:    1<<20 + 4096,
+						},
+					},
+				),
+			},
+			&csi.CreateVolumeResponse{
+				Volume: &csi.Volume{
+					VolumeId:      "csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00",
+					CapacityBytes: 1<<20 + 512,
+					VolumeContext: map[string]string{
+						"volumeGroup": "vg00",
+					},
+				},
+			},
+			false,
+			codes.OK,
+		},
+		{
+			"Should create the volume",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				locker := mock.NewMockVolumeLocker(controller)
+				diskRpc := mock.NewMockDiskRpc(controller)
+				fs := mock.NewMockFileSystem(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectRegisterChannel(t, diskRpc),
+					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
+					expectFsAccepts(t, fs, pkg.MountAccessType, true),
+					expectLvCreate(t, client, "vg00", "csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk", 1<<20, []string{"csi-sanlock-lvm.vleo.net/fs=ext4", "csi-sanlock-lvm.vleo.net/name=volume1&40vg00"}, "", pb.LvActivationMode_LV_ACTIVATION_MODE_ACTIVE_EXCLUSIVE, nil),
+					expectLockVolume(t, locker, *MustVolumeRefFromID("csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00"), "CreateVolume\\(csl-v-WMqg\\+\\+utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00,.*\\)", nil),
+					expectFsMake(t, fs, "/dev/vg00/csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk", nil),
+					expectUnlockVolume(t, locker, *MustVolumeRefFromID("csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00"), "CreateVolume\\(csl-v-WMqg\\+\\+utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00,.*\\)", nil),
+				)
+				return &deps{
+					lvmctrld:     client,
+					volumeLocker: locker,
+					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
+					defaultFs:    "ext4",
+				}
+			},
+			args{
+				context.Background(),
+				req,
+			},
+			&csi.CreateVolumeResponse{
+				Volume: &csi.Volume{
+					VolumeId:      "csl-v-WMqg++utkdTco2QDWtQItAzbBmUsSjjxJkM2EP6nxpk@vg00",
+					CapacityBytes: 1 << 20,
+					VolumeContext: map[string]string{
+						"volumeGroup": "vg00",
+					},
+				},
+			},
+			false,
+			codes.OK,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+			fields := tt.setup(mockCtrl)
+			cs, _ := driverd.NewControllerServer(
+				fields.lvmctrld,
+				fields.volumeLocker,
+				fields.diskRpc,
+				fields.fsRegistry,
+				fields.defaultFs,
+			)
+			got, err := cs.CreateVolume(tt.args.ctx, tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CreateVolume() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if (err != nil) && status.Code(err) != tt.wantErrCode {
+				t.Errorf("CreateVolume() error code = %v, wantErrCode %v", status.Code(err), tt.wantErrCode)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("CreateVolume() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_controllerServer_ListVolumes(t *testing.T) {
 	type fields struct {
 		lvmctrld     proto.LvmCtrldClient
 		volumeLocker pkg.VolumeLocker
 		diskRpc      diskrpc.DiskRpc
+		fsRegistry   driverd.FileSystemRegistry
 		defaultFs    string
 	}
 	type args struct {
@@ -269,6 +722,7 @@ func Test_controllerServer_ListVolumes(t *testing.T) {
 				fields.lvmctrld,
 				fields.volumeLocker,
 				fields.diskRpc,
+				fields.fsRegistry,
 				fields.defaultFs,
 			)
 			got, err := ns.ListVolumes(tt.args.ctx, tt.args.req)
@@ -292,6 +746,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 		lvmctrld     proto.LvmCtrldClient
 		volumeLocker pkg.VolumeLocker
 		diskRpc      diskrpc.DiskRpc
+		fsRegistry   driverd.FileSystemRegistry
 		defaultFs    string
 	}
 	type args struct {
@@ -312,6 +767,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 				client := mock.NewMockLvmCtrldClient(controller)
 				locker := mock.NewMockVolumeLocker(controller)
 				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
 					expectRegisterChannel(t, diskRpc),
@@ -340,6 +796,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					lvmctrld:     client,
 					volumeLocker: locker,
 					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
 					defaultFs:    "testfs",
 				}
 			},
@@ -360,6 +817,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 				client := mock.NewMockLvmCtrldClient(controller)
 				locker := mock.NewMockVolumeLocker(controller)
 				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
 					expectRegisterChannel(t, diskRpc),
@@ -388,6 +846,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					lvmctrld:     client,
 					volumeLocker: locker,
 					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
 					defaultFs:    "testfs",
 				}
 			},
@@ -414,6 +873,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 				client := mock.NewMockLvmCtrldClient(controller)
 				locker := mock.NewMockVolumeLocker(controller)
 				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
 					expectRegisterChannel(t, diskRpc),
@@ -442,6 +902,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					lvmctrld:     client,
 					volumeLocker: locker,
 					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
 					defaultFs:    "testfs",
 				}
 			},
@@ -469,6 +930,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 				client := mock.NewMockLvmCtrldClient(controller)
 				locker := mock.NewMockVolumeLocker(controller)
 				diskRpc := mock.NewMockDiskRpc(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
 					expectRegisterChannel(t, diskRpc),
@@ -497,6 +959,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 					lvmctrld:     client,
 					volumeLocker: locker,
 					diskRpc:      diskRpc,
+					fsRegistry:   fsRegistry,
 					defaultFs:    "testfs",
 				}
 			},
@@ -526,6 +989,7 @@ func Test_controllerServer_ListSnapshots(t *testing.T) {
 				fields.lvmctrld,
 				fields.volumeLocker,
 				fields.diskRpc,
+				fields.fsRegistry,
 				fields.defaultFs,
 			)
 			got, err := ns.ListSnapshots(tt.args.ctx, tt.args.req)
@@ -556,4 +1020,46 @@ func expectGetStatus(t *testing.T, client *mock.MockLvmCtrldClient) *gomock.Call
 func expectRegisterChannel(t *testing.T, diskRpc *mock.MockDiskRpc) *gomock.Call {
 	return diskRpc.EXPECT().
 		Register(diskrpc.Channel(0), gomock.Any())
+}
+
+func expectLvCreate(t *testing.T, client *mock.MockLvmCtrldClient, vgName, lvName string, size uint64, tags []string, origin string, activation pb.LvActivationMode, err error) *gomock.Call {
+	return client.EXPECT().
+		LvCreate(
+			gomock.Any(),
+			CmpMatcher(t, &pb.LvCreateRequest{
+				VgName:   vgName,
+				LvName:   lvName,
+				Size:     size,
+				LvTags:   tags,
+				Origin:   origin,
+				Activate: activation,
+			}, protocmp.Transform()),
+			gomock.Any(),
+		).
+		Return(
+			&pb.LvCreateResponse{},
+			err,
+		)
+}
+
+func expectLvRemove(t *testing.T, client *mock.MockLvmCtrldClient, target []string, err error) *gomock.Call {
+	return client.EXPECT().
+		LvRemove(
+			gomock.Any(),
+			CmpMatcher(t, &pb.LvRemoveRequest{
+				Select: "",
+				Target: target,
+			}, protocmp.Transform()),
+			gomock.Any(),
+		).
+		Return(
+			&pb.LvRemoveResponse{},
+			err,
+		)
+}
+
+func expectFsMake(t *testing.T, fs *mock.MockFileSystem, device string, err error) *gomock.Call {
+	return fs.EXPECT().
+		Make(device).
+		Return(err)
 }

@@ -239,7 +239,7 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		mountFlags = append(mountFlags, req.GetVolumeCapability().GetMount().GetMountFlags()...)
 	}
 
-	// Mount.
+	// Mount device to staging path.
 	if err = fs.Stage(vol.DevPath(), req.GetStagingTargetPath(), mountFlags, volumeGid); err != nil {
 		return nil, err
 	}
