@@ -113,7 +113,8 @@ be `4/4`). To check the current status you can use the following command:
 kubectl -n csi-sanlock-lvm-system get pod
 ```
 
-Each node will should have its own `csi-sanlock-lvm-plugin` pod. You should get an output similar to:
+Each node will should have its own `csi-sanlock-lvm-plugin` pod. You should get
+an output similar to:
 
 ```
 NAME                            READY   STATUS    RESTARTS   AGE
