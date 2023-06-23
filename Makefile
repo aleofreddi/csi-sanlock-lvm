@@ -11,13 +11,14 @@ MANIFEST=$(addsuffix .yaml, $(wildcard deploy/kubernetes/*.url) $(wildcard deplo
 IMAGE=lvmctrld.image driverd.image
 PUSH=lvmctrld.push driverd.push
 
-# k8s>=1.20, v4.0.1 k8s>=1.17
-export EXTERNAL_SNAPSHOTTER_VERSION=v5.0.1
-# k8s>=1.20
-export EXTERNAL_ATTACHER_VERSION=v3.4.0
-# k8s>=1.20, v2.2.2 k8s>=1.17
-export EXTERNAL_PROVISIONER_VERSION=v3.1.0
-export EXTERNAL_RESIZER_VERSION=v1.4.0
+# https://github.com/kubernetes-csi/external-snapshotter/tags, k8s >= 1.20
+export EXTERNAL_SNAPSHOTTER_VERSION=v6.2.2
+# https://github.com/kubernetes-csi/external-attacher/tags, k8s >= 1.17
+export EXTERNAL_ATTACHER_VERSION=v3.5.0
+# https://github.com/kubernetes-csi/external-provisioner/tags, k8s >= 1.20
+export EXTERNAL_PROVISIONER_VERSION=v3.4.0
+# https://github.com/kubernetes-csi/external-resizer/tags, k8s >= 1.16
+export EXTERNAL_RESIZER_VERSION=v1.7.0
 
 VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
 export VERSION
