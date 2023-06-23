@@ -108,6 +108,13 @@ spec:
               name: dev-dir
             - mountPath: /lib/modules
               name: modules-dir
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 64Mi
+              cpu: 100m
 
         - name: lvmctrld
           image: quay.io/aleofreddi/csi-sanlock-lvm-lvmctrld:$VERSION
@@ -132,6 +139,13 @@ spec:
               name: socket-dir
             - mountPath: /dev
               name: dev-dir
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 64Mi
+              cpu: 100m
 
         - name: node-driver-registrar
           image: quay.io/k8scsi/csi-node-driver-registrar:v1.2.0
