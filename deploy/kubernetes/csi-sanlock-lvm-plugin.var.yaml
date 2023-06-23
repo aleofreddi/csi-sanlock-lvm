@@ -45,7 +45,7 @@ spec:
 
       containers:
         - name: driverd
-          image: quay.io/aleofreddi/csi-sanlock-lvm-driverd:v0.4.4
+          image: quay.io/aleofreddi/csi-sanlock-lvm-driverd:v0.4.5
           imagePullPolicy: IfNotPresent
           args:
             - "--driver-name=csi-sanlock-lvm.csi.vleo.net"
@@ -117,7 +117,7 @@ spec:
               cpu: 100m
 
         - name: lvmctrld
-          image: quay.io/aleofreddi/csi-sanlock-lvm-lvmctrld:v0.4.4
+          image: quay.io/aleofreddi/csi-sanlock-lvm-lvmctrld:v0.4.5
           imagePullPolicy: IfNotPresent
           args:
             - "--listen=$(LVMCTRLD_ENDPOINT)"
