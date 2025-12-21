@@ -16,12 +16,14 @@ package driverd
 
 import (
 	"bytes"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"k8s.io/utils/mount"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"k8s.io/utils/mount"
 )
 
 // Action to be taken when mountpoint does not exist.
@@ -45,12 +47,13 @@ type FileSystem interface {
 	Unstage(stagePoint string) error
 	Publish(device, stagePoint, mountPoint string, readOnly bool) error
 	Unpublish(mountPoint string) error
+	Stat(mountPoint string) (*unix.Statfs_t, error)
 }
 
 type fileSystemRegistry struct {
 }
 
-type rawFilesystem struct {
+type rawFileSystem struct {
 }
 
 type fileSystem struct {
@@ -67,7 +70,7 @@ func (fr *fileSystemRegistry) GetFileSystem(filesystem string) (FileSystem, erro
 
 func NewFileSystem(fs string) (FileSystem, error) {
 	if fs == BlockAccessFsName {
-		return &rawFilesystem{}, nil
+		return &rawFileSystem{}, nil
 	}
 	return &fileSystem{fs}, nil
 }
@@ -137,19 +140,25 @@ func (fs *fileSystem) Unpublish(mountPoint string) error {
 	return umountFs(mountPoint, true)
 }
 
-func (fs *rawFilesystem) Make(_ string) error {
+func (fs *fileSystem) Stat(mountPoint string) (*unix.Statfs_t, error) {
+	var stat unix.Statfs_t
+	err := unix.Statfs(mountPoint, &stat)
+	return &stat, err
+}
+
+func (fs *rawFileSystem) Make(_ string) error {
 	return nil
 }
 
-func (fs *rawFilesystem) Grow(_ string) error {
+func (fs *rawFileSystem) Grow(_ string) error {
 	return nil
 }
 
-func (fs *rawFilesystem) Accepts(accessType VolumeAccessType) bool {
+func (fs *rawFileSystem) Accepts(accessType VolumeAccessType) bool {
 	return accessType == BlockAccessType
 }
 
-func (fs *rawFilesystem) Stage(device, stagePoint string, flags []string, grpID *int) error {
+func (fs *rawFileSystem) Stage(device, stagePoint string, flags []string, grpID *int) error {
 	if grpID != nil {
 		if err := grantGroupAccess(device, *grpID); err != nil {
 			return status.Errorf(codes.Internal, "failed to grant group access for volume %s: %v", device, err)
@@ -158,11 +167,15 @@ func (fs *rawFilesystem) Stage(device, stagePoint string, flags []string, grpID 
 	return nil
 }
 
-func (fs *rawFilesystem) Unstage(mountPoint string) error {
+func (fs *rawFileSystem) Unstage(mountPoint string) error {
 	return nil
 }
 
-func (fs *rawFilesystem) Publish(device, stagePoint, mountPoint string, readOnly bool) error {
+func (fs *rawFileSystem) Stat(mountPoint string) (*unix.Statfs_t, error) {
+	return nil, nil
+}
+
+func (fs *rawFileSystem) Publish(device, stagePoint, mountPoint string, readOnly bool) error {
 	flags := []string{"bind"}
 	if readOnly {
 		flags = append(flags, "ro")
@@ -170,7 +183,7 @@ func (fs *rawFilesystem) Publish(device, stagePoint, mountPoint string, readOnly
 	return mountFs(device, mountPoint, "", flags, createFile)
 }
 
-func (fs *rawFilesystem) Unpublish(mountPoint string) error {
+func (fs *rawFileSystem) Unpublish(mountPoint string) error {
 	return umountFs(mountPoint, true)
 }
 

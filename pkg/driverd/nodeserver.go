@@ -31,6 +31,7 @@ var nodeCapabilities = map[csi.NodeServiceCapability_RPC_Type]struct{}{
 	csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME: {},
 	csi.NodeServiceCapability_RPC_EXPAND_VOLUME:        {},
 	csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP:   {},
+	csi.NodeServiceCapability_RPC_GET_VOLUME_STATS:     {},
 }
 
 type nodeServer struct {
@@ -294,8 +295,72 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	// Check arguments.
+	if req.GetVolumeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	}
+	volumePath := req.GetVolumePath()
+	if volumePath == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume path")
+	}
+
+	vol, err := NewVolumeRefFromID(req.GetVolumeId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
+	}
+
+	// Retrieve the logical volume to determine the type and total size.
+	lv, err := lvsVolume(ctx, ns.lvmctrld, *vol)
+	if err != nil {
+		return nil, err
+	}
+	tags, err := decodeTags(lv.LvTags)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to decode tags for volume %q: %v", vol, err)
+	}
+
+	// Extract the filesystem.
+	fsName, ok := tags[fsTagKey]
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "volume %q is missing filesystem type", vol)
+	}
+	fs, err := ns.fsRegistry.GetFileSystem(fsName)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "volume %q has an invalid filesystem: %v", vol, err)
+	}
+
+	stat, err := fs.Stat(volumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to stat volume %q: %v", vol, err)
+	}
+	if stat == nil {
+		// No detailed stats available (for example raw volumes) - return the size.
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Total: int64(lv.LvSize),
+					Unit:  csi.VolumeUsage_BYTES,
+				},
+			},
+		}, nil
+	}
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Available: int64(stat.Bavail) * int64(stat.Bsize),
+				Total:     int64(stat.Blocks) * int64(stat.Bsize),
+				Used:      (int64(stat.Blocks) - int64(stat.Bfree)) * int64(stat.Bsize),
+				Unit:      csi.VolumeUsage_BYTES,
+			},
+			{
+				Available: int64(stat.Ffree),
+				Total:     int64(stat.Files),
+				Used:      int64(stat.Files) - int64(stat.Ffree),
+				Unit:      csi.VolumeUsage_INODES,
+			},
+		},
+	}, nil
 }
 
 func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {

@@ -17,10 +17,12 @@ package driverd_test
 import (
 	"context"
 	"errors"
-	"github.com/aleofreddi/csi-sanlock-lvm/pkg/proto/prototest"
-	"google.golang.org/protobuf/testing/protocmp"
 	"reflect"
 	"testing"
+
+	"github.com/aleofreddi/csi-sanlock-lvm/pkg/proto/prototest"
+	"golang.org/x/sys/unix"
+	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/Storytel/gomock-matchers"
 	"github.com/aleofreddi/csi-sanlock-lvm/pkg/driverd"
@@ -223,7 +225,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 				gomock.InOrder(
 					expectGetStatus(t, client),
 					expectLockVolume(t, locker, *MustVolumeRefFromID("volume1@vg00"), "stage", nil),
-					expectLvs(t, client, "vg00/volume1", nil, status.Error(codes.NotFound, "not found")),
+					expectLvs(t, client, "vg00/volume1", nil, 0, status.Error(codes.NotFound, "not found")),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -249,7 +251,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 				gomock.InOrder(
 					expectGetStatus(t, client),
 					expectLockVolume(t, locker, *MustVolumeRefFromID("volume1@vg00"), "stage", nil),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "raw", fs, nil),
 					expectFsAccepts(t, fs, driverd.MountAccessType, false),
 				)
@@ -278,7 +280,7 @@ func Test_nodeServer_NodeStageVolume(t *testing.T) {
 				gomock.InOrder(
 					expectGetStatus(t, client),
 					expectLockVolume(t, locker, *MustVolumeRefFromID("volume1@vg00"), "stage", nil),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
 					expectFsAccepts(t, fs, driverd.MountAccessType, true),
 					expectStage(t, fs, "/dev/vg00/volume1", "/staging/path", []string{"noatime"}, &testGid, nil),
@@ -393,7 +395,7 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
 					expectUnstage(t, fs, "/staging/path", nil),
 					expectUnlockVolume(t, locker, *MustVolumeRefFromID("volume1@vg00"), "stage", status.Error(codes.Internal, "internal error")),
@@ -424,7 +426,7 @@ func Test_nodeServer_NodeUnstageVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
 					expectUnstage(t, fs, "/staging/path", nil),
 					expectUnlockVolume(t, locker, *MustVolumeRefFromID("volume1@vg00"), "stage", nil),
@@ -577,7 +579,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", nil, status.Error(codes.Internal, "internal error")),
+					expectLvs(t, client, "vg00/volume1", nil, 0, status.Error(codes.Internal, "internal error")),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -601,7 +603,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", nil, status.Error(codes.NotFound, "not found")),
+					expectLvs(t, client, "vg00/volume1", nil, 0, status.Error(codes.NotFound, "not found")),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -625,7 +627,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw", "csi-sanlock-lvm.vleo.net/fs=ext4"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw", "csi-sanlock-lvm.vleo.net/fs=ext4"}, 0, nil),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -649,7 +651,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/no=fs"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/no=fs"}, 0, nil),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -673,7 +675,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=unknown"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=unknown"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "unknown", nil, errors.New("unknown filesystem")),
 				)
 				return &deps{
@@ -699,7 +701,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=&24raw"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=&24raw"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "$raw", fs, nil),
 					expectFsAccepts(t, fs, driverd.MountAccessType, false),
 				)
@@ -726,7 +728,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=&24raw"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=&24raw"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "$raw", fs, nil),
 					expectFsAccepts(t, fs, driverd.BlockAccessType, true),
 					expectPublish(t, fs, "/dev/vg00/volume1", "/staging/path", "/target/path", true, nil),
@@ -761,7 +763,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=&24raw"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=&24raw"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "$raw", fs, nil),
 					expectFsAccepts(t, fs, driverd.BlockAccessType, true),
 					expectPublish(t, fs, "/dev/vg00/volume1", "/staging/path", "/target/path", false, nil),
@@ -795,7 +797,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
 					expectFsAccepts(t, fs, driverd.MountAccessType, true),
 					expectPublish(t, fs, "/dev/vg00/volume1", "/staging/path", "/target/path", true, nil),
@@ -827,7 +829,7 @@ func Test_nodeServer_NodePublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
 					expectFsAccepts(t, fs, driverd.MountAccessType, true),
 					expectPublish(t, fs, "/dev/vg00/volume1", "/staging/path", "/target/path", false, nil),
@@ -942,7 +944,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{}, status.Error(codes.Internal, "internal error")),
+					expectLvs(t, client, "vg00/volume1", []string{}, 0, status.Error(codes.Internal, "internal error")),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -969,7 +971,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw"}, status.Errorf(codes.NotFound, "error")),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw"}, 0, status.Errorf(codes.NotFound, "error")),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -996,7 +998,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw", "csi-sanlock-lvm.vleo.net/fs=ext4"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw", "csi-sanlock-lvm.vleo.net/fs=ext4"}, 0, nil),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -1023,7 +1025,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{}, 0, nil),
 				)
 				return &deps{
 					lvmctrld:     client,
@@ -1050,7 +1052,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=unknown"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=unknown"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "unknown", nil, errors.New("unknown filesystem")),
 				)
 				return &deps{
@@ -1079,7 +1081,7 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 				fsRegistry := mock.NewMockFileSystemRegistry(controller)
 				gomock.InOrder(
 					expectGetStatus(t, client),
-					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw"}, nil),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=raw"}, 0, nil),
 					expectGetFileSystem(t, fsRegistry, "raw", fs, nil),
 					expectUnpublish(t, fs, "/target/path", nil),
 				)
@@ -1127,6 +1129,197 @@ func Test_nodeServer_NodeUnpublishVolume(t *testing.T) {
 	}
 }
 
+func Test_nodeServer_NodeGetVolumeStats(t *testing.T) {
+	req := &csi.NodeGetVolumeStatsRequest{
+		VolumeId:   "volume1@vg00",
+		VolumePath: "/target/path",
+	}
+	type deps struct {
+		lvmctrld     pb.LvmCtrldClient
+		volumeLocker driverd.VolumeLocker
+		fsRegistry   driverd.FileSystemRegistry
+	}
+	type args struct {
+		ctx context.Context
+		req *csi.NodeGetVolumeStatsRequest
+	}
+	tests := []struct {
+		name        string
+		setup       func(controller *gomock.Controller) *deps
+		args        args
+		want        *csi.NodeGetVolumeStatsResponse
+		wantErr     bool
+		wantErrCode codes.Code
+	}{
+		{
+			"Should fail when VolumeId is missing",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+				)
+				return &deps{
+					lvmctrld: client,
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Without(req, "VolumeId"),
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when VolumePath is missing",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+				)
+				return &deps{
+					lvmctrld: client,
+				}
+			},
+			args{
+				context.Background(),
+				prototest.Without(req, "VolumePath"),
+			},
+			nil,
+			true,
+			codes.InvalidArgument,
+		},
+		{
+			"Should fail when Lvs fails",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectLvs(t, client, "vg00/volume1", nil, 0, status.Error(codes.Internal, "internal error")),
+				)
+				return &deps{
+					lvmctrld: client,
+				}
+			},
+			args{
+				context.Background(),
+				req,
+			},
+			nil,
+			true,
+			codes.Internal,
+		},
+		{
+			"Should return stats for block volume",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				fs := mock.NewMockFileSystem(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=&24raw"}, 1024*1024, nil),
+					expectGetFileSystem(t, fsRegistry, "$raw", fs, nil),
+					expectStat(t, fs, "/target/path", nil, nil),
+				)
+				return &deps{
+					fsRegistry: fsRegistry,
+					lvmctrld:   client,
+				}
+			},
+			args{
+				context.Background(),
+				req,
+			},
+			&csi.NodeGetVolumeStatsResponse{
+				Usage: []*csi.VolumeUsage{
+					{
+						Total: 1024 * 1024,
+						Unit:  csi.VolumeUsage_BYTES,
+					},
+				},
+			},
+			false,
+			codes.OK,
+		},
+		{
+			"Should return stats for filesystem volume",
+			func(controller *gomock.Controller) *deps {
+				client := mock.NewMockLvmCtrldClient(controller)
+				fs := mock.NewMockFileSystem(controller)
+				fsRegistry := mock.NewMockFileSystemRegistry(controller)
+				gomock.InOrder(
+					expectGetStatus(t, client),
+					expectLvs(t, client, "vg00/volume1", []string{"csi-sanlock-lvm.vleo.net/fs=ext4"}, 1024*1024, nil),
+					expectGetFileSystem(t, fsRegistry, "ext4", fs, nil),
+					expectStat(t, fs, "/target/path", &unix.Statfs_t{
+						Bsize:  512,
+						Blocks: 1024,
+						Bfree:  512,
+						Bavail: 512,
+						Files:  1024,
+						Ffree:  512,
+					}, nil),
+				)
+				return &deps{
+					fsRegistry: fsRegistry,
+					lvmctrld:   client,
+				}
+			},
+			args{
+				context.Background(),
+				req,
+			},
+			&csi.NodeGetVolumeStatsResponse{
+				Usage: []*csi.VolumeUsage{
+					{
+						Total:     1024 * 512,
+						Used:      512 * 512,
+						Available: 512 * 512,
+						Unit:      csi.VolumeUsage_BYTES,
+					},
+					{
+						Total:     1024,
+						Used:      512,
+						Available: 512,
+						Unit:      csi.VolumeUsage_INODES,
+					},
+				},
+			},
+			false,
+			codes.OK,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+			fields := tt.setup(mockCtrl)
+			ns, _ := driverd.NewNodeServer(
+				fields.lvmctrld,
+				fields.volumeLocker,
+				fields.fsRegistry,
+			)
+			got, err := ns.NodeGetVolumeStats(tt.args.ctx, tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NodeGetVolumeStats() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if (err != nil) && status.Code(err) != tt.wantErrCode {
+				t.Errorf("NodeGetVolumeStats() error code = %v, wantErrCode %v", status.Code(err), tt.wantErrCode)
+				return
+			}
+			if tt.want != nil && !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NodeGetVolumeStats() got = %v, want %v", got, tt.want)
+			}
+			if tt.name == "Should return stats for filesystem volume" {
+				if got == nil || len(got.Usage) != 2 {
+					t.Errorf("NodeGetVolumeStats() got = %v, want 2 usage entries", got)
+				}
+			}
+		})
+	}
+}
+
 func MustVolumeRefFromID(volumeID string) *driverd.VolumeRef {
 	id, err := driverd.NewVolumeRefFromID(volumeID)
 	if err != nil {
@@ -1147,7 +1340,7 @@ func expectUnlockVolume(_ *testing.T, locker *mock.MockVolumeLocker, ref driverd
 		Return(err)
 }
 
-func expectLvs(t *testing.T, client *mock.MockLvmCtrldClient, target string, tags []string, err error) *gomock.Call {
+func expectLvs(t *testing.T, client *mock.MockLvmCtrldClient, target string, tags []string, size uint64, err error) *gomock.Call {
 	return client.EXPECT().
 		Lvs(
 			gomock.Any(),
@@ -1155,7 +1348,7 @@ func expectLvs(t *testing.T, client *mock.MockLvmCtrldClient, target string, tag
 			gomock.Any(),
 		).
 		Return(
-			&pb.LvsResponse{Lvs: []*pb.LogicalVolume{{LvTags: tags}}},
+			&pb.LvsResponse{Lvs: []*pb.LogicalVolume{{LvTags: tags, LvSize: size}}},
 			err,
 		)
 }
@@ -1189,4 +1382,9 @@ func expectPublish(_ *testing.T, fs *mock.MockFileSystem, device string, stagePo
 func expectUnpublish(_ *testing.T, fs *mock.MockFileSystem, mountPoint string, err error) *gomock.Call {
 	return fs.EXPECT().
 		Unpublish(mountPoint).Return(err)
+}
+
+func expectStat(_ *testing.T, fs *mock.MockFileSystem, mountPoint string, statfs *unix.Statfs_t, err error) *gomock.Call {
+	return fs.EXPECT().
+		Stat(mountPoint).Return(statfs, err)
 }
