@@ -19,7 +19,7 @@ metadata:
 spec:
   containers:
     - name: init
-      image: quay.io/aleofreddi/csi-sanlock-lvm-lvmctrld:v0.4.5
+      image: quay.io/aleofreddi/csi-sanlock-lvm-lvmctrld:v0.4.6
       imagePullPolicy: IfNotPresent
       command: ["sh", "-c", "sanlock daemon -w 0; lvmlockd --host-id 2000; bash"]
       stdin: true
