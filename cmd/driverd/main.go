@@ -76,7 +76,6 @@ func bootstrap() (*driverd.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance volume lock: %v", err)
 	}
-	// Start DiskRPC
 	drpc, err := driverd.NewDiskRpcService(client, vl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance disk rpc service: %v", err)
