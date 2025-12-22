@@ -57,7 +57,7 @@ test coverage.txt: mock
 %: %.bin $(GO) $(ARGS_DEP) | proto
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION) -X main.commit=$(COMMIT)' -o $@ ./$(@D)
 
-%.pb.go %_grpc.pb.go: %.proto
+%.pb.go %_grpc.pb.go: %.proto $(ARGS_DEP)
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=require_unimplemented_servers=false:. --go-grpc_opt=paths=source_relative $<
 
 %.mock.go: %.mock
