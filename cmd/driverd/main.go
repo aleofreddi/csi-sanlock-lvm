@@ -56,10 +56,6 @@ func bootstrap() (*driverd.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance lvmctrld client: %v", err)
 	}
-	// Wait for lvmctrld to be ready.
-	if err := client.Wait(); err != nil {
-		return nil, fmt.Errorf("lvmctrld startup failed: %v", err)
-	}
 
 	// Retrieve hostname.
 	var node string
@@ -81,7 +77,7 @@ func bootstrap() (*driverd.Listener, error) {
 		return nil, fmt.Errorf("failed to instance disk rpc service: %v", err)
 	}
 	// Instance servers.
-	is, err := driverd.NewIdentityServer(*drvName, version)
+	is, err := driverd.NewIdentityServer(*drvName, version, client.IsReady)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instance identity server: %v", err)
 	}

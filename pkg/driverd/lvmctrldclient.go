@@ -21,7 +21,9 @@ import (
 
 	pb "github.com/aleofreddi/csi-sanlock-lvm/pkg/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/klog"
 )
 
@@ -41,19 +43,15 @@ func NewLvmCtrldClient(address string) (*LvmCtrldClientConnection, error) {
 	}, nil
 }
 
-func (c *LvmCtrldClientConnection) Wait() error { // FIXME: add a timeout here!
-	for {
-		vgs, err := c.Vgs(context.Background(), &pb.VgsRequest{})
-		if err != nil {
-			klog.Infof("Failed to connect to lvmctrld (%s), retrying...", err.Error())
-			time.Sleep(1 * time.Second)
-			continue
-		}
-		klog.Infof("lvmctrld startup complete, found %d volume group(s)", len(vgs.Vgs))
-		break
+func (c *LvmCtrldClientConnection) IsReady() bool {
+	vgs, err := c.Vgs(context.Background(), &pb.VgsRequest{
+		Select: "",
+	})
+	if err != nil {
+		return false
 	}
-	klog.Infof("Connected to lvmctrld")
-	return nil
+	klog.V(4).Infof("lvmctrld check: found %d volume group(s)", len(vgs.Vgs))
+	return true
 }
 
 func (c *LvmCtrldClientConnection) Close() error {
@@ -66,18 +64,25 @@ func (c *LvmCtrldClientConnection) Close() error {
 func connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	klog.V(2).Infof("Connecting to %s", address)
 	dialOptions := []grpc.DialOption{
-		grpc.WithInsecure(),
-		grpc.WithBackoffMaxDelay(time.Second),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		// lvmcltrd is running in the same pod, backoff to at most 5 seconds.
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff: backoff.Config{
+				BaseDelay:  time.Second,
+				Multiplier: 1.2,
+				MaxDelay:   5 * time.Second,
+			},
+		}),
 		//grpc.WithUnaryInterceptor(LvmctrldLog),
 	}
-	dialOptions = append(dialOptions, grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
+	dialOptions = append(dialOptions, grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 		protocol, target, err := parseAddress(addr)
 		if err != nil {
 			return nil, err
 		}
-		return net.DialTimeout(protocol, target, timeout)
+		return (&net.Dialer{}).DialContext(ctx, protocol, target)
 	}))
-	conn, err := grpc.Dial(address, dialOptions...)
+	conn, err := grpc.NewClient(address, dialOptions...)
 	if err != nil {
 		return nil, err
 	}
