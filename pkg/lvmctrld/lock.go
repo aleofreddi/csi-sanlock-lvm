@@ -21,14 +21,22 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/google/shlex"
 	"k8s.io/klog"
 )
 
-func StartLock(id uint16, volumeGroups []string) error {
+func StartLock(id uint16, sanlockArgs string) error {
 	if err := daemonize("wdmd", os.Stdout, os.Stderr, "-D"); err != nil {
 		return err
 	}
-	if err := daemonize("sanlock", nil, nil, "daemon", "-D"); err != nil {
+	args := []string{"daemon", "-D"}
+	extraArgs, err := shlex.Split(sanlockArgs)
+	if err != nil {
+		return fmt.Errorf("failed to parse sanlock-args: %v", err)
+	}
+	args = append(args, extraArgs...)
+
+	if err := daemonize("sanlock", nil, nil, args...); err != nil {
 		return err
 	}
 	if err := daemonize("lvmlockd", os.Stdout, os.Stderr, "--host-id", fmt.Sprintf("%d", id), "-f"); err != nil {

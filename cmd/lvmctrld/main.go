@@ -26,12 +26,13 @@ import (
 )
 
 var (
-	noLock   = flag.Bool("no-lock", false, "disable locking, use the given host id. This option is mutually exclusive with lock-host-addr and lock-host-id")
-	lockAddr = flag.String("lock-host-addr", "", "enable locking, compute host id from the given ip address. This options is mutually exclusive with lock-host-id and no-lock")
-	lockId   = flag.Uint("lock-host-id", 0, "enable locking, use the given host id. This option is mutually exclusive with lock-host-addr and no-lock")
-	listen   = flag.String("listen", "tcp://0.0.0.0:9000", "listen address")
-	version  string
-	commit   string
+	noLock      = flag.Bool("no-lock", false, "disable locking, use the given host id. This option is mutually exclusive with lock-host-addr and lock-host-id")
+	lockAddr    = flag.String("lock-host-addr", "", "enable locking, compute host id from the given ip address. This options is mutually exclusive with lock-host-id and no-lock")
+	lockId      = flag.Uint("lock-host-id", 0, "enable locking, use the given host id. This option is mutually exclusive with lock-host-addr and no-lock")
+	sanlockArgs = flag.String("sanlock-args", "", "additional arguments to pass to sanlock")
+	listen      = flag.String("listen", "tcp://0.0.0.0:9000", "listen address")
+	version     string
+	commit      string
 )
 
 func main() {
@@ -65,7 +66,7 @@ func bootstrap() (*lvmctrld.Listener, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse host id: %v", err)
 		}
-		if err = lvmctrld.StartLock(id, []string{}); err != nil {
+		if err = lvmctrld.StartLock(id, *sanlockArgs); err != nil {
 			return nil, fmt.Errorf("failed to start lock: %v", err)
 		}
 	}
