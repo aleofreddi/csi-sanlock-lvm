@@ -34,3 +34,12 @@ resources:
   - rbac-snapshot-controller.url.yaml
   - rbac-snapshotter.url.yaml
   - setup-snapshot-controller.url.yaml
+
+configMapGenerator:
+- name: csi-sanlock-lvm
+  literals:
+    - log-level="5"
+    - sanlock-args=""
+
+generatorOptions:
+  disableNameSuffixHash: true
