@@ -6,7 +6,7 @@ rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(su
 BIN=cmd/lvmctrld/lvmctrld cmd/driverd/driverd
 GO=$(call rwildcard,.,*.go)
 MOCK=$(addprefix pkg/mock/, diskrpc.mock.go filesystem.mock.go filesystemregistry.mock.go lvmctrldclient.mock.go mount.mock.go volumelocker.mock.go)
-PROTO=$(addprefix pkg/proto/, lvmctrld.pb.go lvmctrld_grpc.pb.go diskrpc.pb.go)
+PROTO=$(addprefix pkg/proto/, lvmctrld.pb.go lvmctrld_grpc.pb.go diskrpc.pb.go diskrpc_grpc.pb.go)
 MANIFEST=$(addsuffix .yaml, $(wildcard deploy/kubernetes/*.url) $(wildcard deploy/kubernetes/*.var))
 IMAGE=lvmctrld.image driverd.image
 PUSH=lvmctrld.push driverd.push
