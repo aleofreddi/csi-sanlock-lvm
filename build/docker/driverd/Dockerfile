@@ -12,15 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.20 AS builder
+FROM golang:1.24 AS builder
 
 RUN apt-get update \
     && apt-get install -y protobuf-compiler gettext-base
 
-ADD . /src
 WORKDIR /src
-RUN go get github.com/golang/protobuf/protoc-gen-go google.golang.org/grpc/cmd/protoc-gen-go-grpc github.com/golang/mock/mockgen \
-    && go install github.com/golang/protobuf/protoc-gen-go google.golang.org/grpc/cmd/protoc-gen-go-grpc github.com/golang/mock/mockgen
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go \
+    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc \
+    && go install github.com/golang/mock/mockgen
+
+COPY . .
 ARG VERSION COMMIT
 RUN make VERSION=$VERSION COMMIT=$COMMIT cmd/driverd/driverd
 
