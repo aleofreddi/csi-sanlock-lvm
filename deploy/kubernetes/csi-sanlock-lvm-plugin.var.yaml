@@ -64,7 +64,10 @@ spec:
                   apiVersion: v1
                   fieldPath: spec.nodeName
             - name: LOG_LEVEL
-              value: "3"
+              valueFrom:
+                configMapKeyRef:
+                  name: csi-sanlock-lvm
+                  key: log-level
           securityContext:
             # This is necessary only for systems with SELinux, where
             # non-privileged sidecar containers cannot access unix domain socket
@@ -123,6 +126,7 @@ spec:
             - "--listen=$(LVMCTRLD_ENDPOINT)"
             - "--lock-host-addr=$(NODE_IP)"
             - "--v=$(LOG_LEVEL)"
+            - "--sanlock-args=$(SANLOCK_ARGS)"
           env:
             - name: LVMCTRLD_ENDPOINT
               value: unix:///csi/lvmctrld.sock
@@ -131,7 +135,16 @@ spec:
                 fieldRef:
                   fieldPath: status.hostIP
             - name: LOG_LEVEL
-              value: "3"
+              valueFrom:
+                configMapKeyRef:
+                  name: csi-sanlock-lvm
+                  key: log-level
+            - name: SANLOCK_ARGS
+              valueFrom:
+                configMapKeyRef:
+                  name: csi-sanlock-lvm
+                  key: sanlock-args
+                  optional: true
           securityContext:
             privileged: true
           volumeMounts:
