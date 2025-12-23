@@ -127,6 +127,7 @@ spec:
             - "--lock-host-addr=$(NODE_IP)"
             - "--v=$(LOG_LEVEL)"
             - "--sanlock-args=$(SANLOCK_ARGS)"
+            - "--lvmlockd-args=$(LVMLOCKD_ARGS)"
           env:
             - name: LVMCTRLD_ENDPOINT
               value: unix:///csi/lvmctrld.sock
@@ -144,6 +145,12 @@ spec:
                 configMapKeyRef:
                   name: csi-sanlock-lvm
                   key: sanlock-args
+                  optional: true
+            - name: LVMLOCKD_ARGS
+              valueFrom:
+                configMapKeyRef:
+                  name: csi-sanlock-lvm
+                  key: lvmlockd-args
                   optional: true
           securityContext:
             privileged: true

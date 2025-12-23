@@ -39,6 +39,7 @@ configMapGenerator:
 - name: csi-sanlock-lvm
   literals:
     - log-level="5"
+    - lvmlockd-args=""
     - sanlock-args=""
 
 generatorOptions:

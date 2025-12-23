@@ -25,7 +25,7 @@ import (
 	"k8s.io/klog"
 )
 
-func StartLock(id uint16, sanlockArgs string) error {
+func StartLock(id uint16, sanlockArgs string, lvmlockdArgs string) error {
 	if err := daemonize("wdmd", os.Stdout, os.Stderr, "-D"); err != nil {
 		return err
 	}
@@ -35,13 +35,20 @@ func StartLock(id uint16, sanlockArgs string) error {
 		return fmt.Errorf("failed to parse sanlock-args: %v", err)
 	}
 	args = append(args, extraArgs...)
-
 	if err := daemonize("sanlock", nil, nil, args...); err != nil {
 		return err
 	}
-	if err := daemonize("lvmlockd", os.Stdout, os.Stderr, "--host-id", fmt.Sprintf("%d", id), "-f"); err != nil {
+
+	args = []string{"--host-id", fmt.Sprintf("%d", id), "-f"}
+	extraArgs, err = shlex.Split(lvmlockdArgs)
+	if err != nil {
+		return fmt.Errorf("failed to parse lvmlockd-args: %v", err)
+	}
+	args = append(args, extraArgs...)
+	if err := daemonize("lvmlockd", os.Stdout, os.Stderr, args...); err != nil {
 		return err
 	}
+
 	time.Sleep(1 * time.Second)
 	klog.Infof("Starting global lock (can take up to 3 minutes)")
 	vgchange := exec.Command("vgchange", "--lockstart", "--verbose")
