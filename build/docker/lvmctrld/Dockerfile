@@ -30,7 +30,7 @@ COPY . .
 ARG VERSION COMMIT
 RUN make VERSION=$VERSION COMMIT=$COMMIT cmd/lvmctrld/lvmctrld
 
-FROM ubuntu:18.04
+FROM ubuntu:24.04
 
 RUN apt-get update \
 	&& apt-get install -y file util-linux e2fsprogs lvm2 sanlock lvm2-lockd \
