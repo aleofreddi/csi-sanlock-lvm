@@ -34,6 +34,8 @@ spec:
             - mountPath: /lib/modules
               name: modules-dir
               readOnly: true
+            - mountPath: /run/lvm
+              name: run-lvm-dir
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -159,6 +161,8 @@ spec:
               name: socket-dir
             - mountPath: /dev
               name: dev-dir
+            - mountPath: /run/lvm
+              name: run-lvm-dir
           resources:
             requests:
               memory: 64Mi
@@ -229,3 +233,5 @@ spec:
             path: /lib/modules
             type: Directory
           name: modules-dir
+        - emptyDir: {}
+          name: run-lvm-dir

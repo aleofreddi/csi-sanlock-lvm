@@ -28,6 +28,8 @@ spec:
       volumeMounts:
         - mountPath: /dev
           name: dev-dir
+        - mountPath: /run/lvm
+          name: run-lvm-dir
         - mountPath: /lib/modules
           name: modules-dir
           readOnly: true
@@ -45,6 +47,8 @@ spec:
         path: /dev
         type: Directory
       name: dev-dir
+    - emptyDir: {}
+      name: run-lvm-dir
     - hostPath:
         path: /lib/modules
         type: Directory
