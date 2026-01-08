@@ -30,7 +30,6 @@ COPY pkg/ pkg/
 COPY cmd/ cmd/
 COPY Makefile ./
 COPY configs/ configs/
-COPY csi-sanity ./
 ARG VERSION=dev
 ARG COMMIT=none
 RUN make VERSION=$VERSION COMMIT=$COMMIT proto mock build
@@ -47,6 +46,6 @@ RUN ln -s /proc/mounts /etc/mtab
 COPY --from=builder /src/cmd/lvmctrld/lvmctrld /usr/local/bin/lvmctrld
 COPY --from=builder /src/cmd/driverd/driverd /usr/local/bin/driverd
 COPY --from=builder /go/bin/csi-sanity /usr/local/bin/csi-sanity
-COPY csi-sanity /usr/local/bin/csi-sanity-test.sh
+COPY scripts/csi-sanity-test.sh /usr/local/bin/csi-sanity-test.sh
 
 ENTRYPOINT ["/usr/local/bin/csi-sanity-test.sh"]

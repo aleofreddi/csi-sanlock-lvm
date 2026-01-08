@@ -53,8 +53,8 @@ for i in \
     'losetup:install the proper package' \
     'pvcreate:install lvm tools' \
     'vgcreate:install lvm tools' \
-    './cmd/lvmctrld/lvmctrld:run "make" to build the driver' \
-    './cmd/driverd/driverd:run "make" to build the driver' \
+    'lvmctrld:run "make" to build the driver' \
+    'driverd:run "make" to build the driver' \
 ; do
     IFS=: read f d <<<"$i"
     which "$f" >/dev/null 2>&1 || die "$me requires $f, $d"
@@ -71,23 +71,26 @@ device="$(losetup --show -f "$imgfile")" || die Failed to setup loopback device
 rollback="echo Detaching $device; losetup -d $device; $rollback"
 trap "(trap '' INT; $rollback)" EXIT
 
+modprobe dm_snapshot || die Failed to load dm_snapshot kernel module
+
 pvcreate -f "$device" || die Failed to create physical device
 
+rm -rf /dev/vg_csi_sanity_$$
 vgcreate -s $((1024*1024))b vg_csi_sanity_$$ "$device" || die Failed to create volume group
-rollback="echo Bringing down vg_csi_sanity_$$; vgchange -a n vg_csi_sanity_$$; $rollback"
+rollback="echo Bringing down vg_csi_sanity_$$; vgchange -a n vg_csi_sanity_$$; rm -f /dev/vg_csi_sanity_$$; $rollback"
 
 lvcreate -L 512b -n rpc-lock --addtag csi-sanlock-lvm.vleo.net/rpcRole=lock vg_csi_sanity_$$ || die Failed to create rpc lock logical volume
 lvcreate -L 8m -n rpc-data --addtag csi-sanlock-lvm.vleo.net/rpcRole=data vg_csi_sanity_$$ || die Failed to create rpc data logical volume
 
 lvmctrld_sock="unix://$tmpdir/lvmctrld.sock"
-"$rootdir"/cmd/lvmctrld/lvmctrld --listen "$lvmctrld_sock" --no-lock -v "$verbosity" &
+lvmctrld --listen "$lvmctrld_sock" --no-lock -v "$verbosity" &
 rollback="echo Killing lvmctrld pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
 trap "(trap '' INT; $rollback)" EXIT
 echo Waiting for lvmctrld to spin up...
 waitForSocket "$tmpdir/lvmctrld.sock"
 
 driverd_sock="unix://$tmpdir/driverd.sock"
-"$rootdir"/cmd/driverd/driverd --lvmctrld "$lvmctrld_sock" --listen "$driverd_sock" -v "$verbosity" &
+driverd --lvmctrld "$lvmctrld_sock" --listen "$driverd_sock" -v "$verbosity" &
 rollback="echo Killing driverd pid $!; kill $! 2>/dev/null; sleep 1; kill -9 $! 2>/dev/null; $rollback"
 trap "(trap '' INT; $rollback)" EXIT
 echo Waiting for driverd to spin up...
