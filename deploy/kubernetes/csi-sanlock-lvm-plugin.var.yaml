@@ -44,6 +44,13 @@ spec:
               drop:
                 - ALL
             readOnlyRootFilesystem: true
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 32Mi
+              cpu: 50m
 
       containers:
         - name: driverd
@@ -115,10 +122,10 @@ spec:
               name: modules-dir
           resources:
             requests:
-              memory: 128Mi
+              memory: 96Mi
               cpu: 50m
             limits:
-              memory: 128Mi
+              memory: 96Mi
               cpu: 100m
 
         - name: lvmctrld
@@ -165,10 +172,10 @@ spec:
               name: run-lvm-dir
           resources:
             requests:
-              memory: 64Mi
+              memory: 96Mi
               cpu: 10m
             limits:
-              memory: 64Mi
+              memory: 96Mi
               cpu: 100m
 
         - name: node-driver-registrar
@@ -197,6 +204,13 @@ spec:
               name: socket-dir
             - mountPath: /registration
               name: registration-dir
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 32Mi
+              cpu: 100m
 
         - name: liveness-probe
           volumeMounts:
@@ -207,6 +221,13 @@ spec:
             - --csi-address=/csi/csi.sock
             - --connection-timeout=3s
             - --health-port=9898
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 32Mi
+              cpu: 100m
 
       volumes:
         - hostPath:
