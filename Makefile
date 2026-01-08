@@ -54,6 +54,9 @@ clean:
 test coverage.txt: mock
 	go test -race -coverprofile=coverage.txt -covermode=atomic ./cmd/* ./pkg/*
 
+test-sanity: csi-sanity-test.image
+	docker run --privileged -v /dev:/dev quay.io/aleofreddi/csi-sanlock-lvm-csi-sanity-test:$(VERSION)
+
 %: %.bin $(GO) $(ARGS_DEP) | proto
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static" -X main.version=$(VERSION) -X main.commit=$(COMMIT)' -o $@ ./$(@D)
 
