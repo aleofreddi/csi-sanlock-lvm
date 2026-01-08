@@ -297,15 +297,19 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 
 func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	// Check arguments.
-	if req.GetVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing volume id")
-	}
 	volumePath := req.GetVolumePath()
 	if volumePath == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing volume path")
 	}
+	volumeId := req.GetVolumeId()
+	if volumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing volume id")
+	}
+	if !volumeIdRe.MatchString(volumeId) {
+		return nil, status.Error(codes.NotFound, "invalid volume id")
+	}
 
-	vol, err := NewVolumeRefFromID(req.GetVolumeId())
+	vol, err := NewVolumeRefFromID(volumeId)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id: %v", err)
 	}
