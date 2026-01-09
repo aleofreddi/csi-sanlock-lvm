@@ -20,7 +20,7 @@ export EXTERNAL_PROVISIONER_VERSION=v3.4.0
 # https://github.com/kubernetes-csi/external-resizer/tags, k8s >= 1.16
 export EXTERNAL_RESIZER_VERSION=v1.7.0
 
-VERSION?=$(shell git describe --tags 2>/dev/null || (printf commit-; git rev-parse --short HEAD))
+VERSION?=$(shell git tag --points-at | grep ^v || (printf commit-; git rev-parse --short HEAD))
 export VERSION
 COMMIT?=$(shell git rev-parse --short HEAD)
 export COMMIT
