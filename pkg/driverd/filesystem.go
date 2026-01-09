@@ -214,13 +214,11 @@ func mountFs(source, mountPoint, fsName string, flags []string, mpAction mountPo
 			return status.Errorf(codes.Internal, "%s does not exist", mountPoint)
 		case createFile:
 			file, err := os.OpenFile(mountPoint, os.O_CREATE, os.FileMode(0640))
+			if err != nil {
+				return status.Errorf(codes.Internal, "failed to create file %s: %v", mountPoint, err)
+			}
 			if err = file.Close(); err != nil {
 				return err
-			}
-			if err != nil {
-				if !os.IsExist(err) {
-					return status.Errorf(codes.Internal, "failed to create file %s: %v", mountPoint, err)
-				}
 			}
 		case createDirectory:
 			if err := os.MkdirAll(mountPoint, 0750); err != nil {
