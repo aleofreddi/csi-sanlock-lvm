@@ -22,12 +22,12 @@ This project is in alpha state, YMMV.
 - Online volume extension
 - Online snapshot support
 - Volume groups (fs groups)
+- Volume statistics
 - ~~Ephemeral volumes~~ (TODO)
 
 ## Prerequisite
 
 - Kubernetes 1.20+
-- `kubectl`
 
 ## Limitations
 
