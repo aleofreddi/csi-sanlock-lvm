@@ -1,4 +1,4 @@
-.PHONY: args build clean mock proto test %.image %.push
+.PHONY: args build clean format mock proto test test-sanity %.image %.push
 
 # Recursive wildcard from https://stackoverflow.com/questions/2483182/recursive-wildcards-in-gnu-make.
 rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
@@ -47,6 +47,9 @@ push: $(PUSH)
 
 args: $(ARGS_CLEAN)
 	printf "ARGS_PREV=%s\nARGS_CLEAN=clean\n" $(ARGS_CURR) > .makeargs
+
+format:
+	gofmt -l -w .
 
 clean:
 	$(RM) $(BIN) $(PROTO) $(MOCK) $(MANIFEST)

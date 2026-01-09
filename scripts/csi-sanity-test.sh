@@ -53,11 +53,11 @@ for i in \
     'losetup:install the proper package' \
     'pvcreate:install lvm tools' \
     'vgcreate:install lvm tools' \
-    'lvmctrld:run "make" to build the driver' \
-    'driverd:run "make" to build the driver' \
+    'lvmctrld:run "make" to build the driver and add it to the path' \
+    'driverd:run "make" to build the driver and add it to the path' \
 ; do
     IFS=: read f d <<<"$i"
-    which "$f" >/dev/null 2>&1 || die "$me requires $f, $d"
+    which "$f" >/dev/null 2>&1 || die "$me requires $f: $d"
 done
 
 tmpdir="$(mktemp -d /tmp/csi-sanity-$$.XXXXX)" || die Failed to allocate a temporary directory
@@ -75,8 +75,8 @@ modprobe dm_snapshot || die Failed to load dm_snapshot kernel module
 
 pvcreate -f "$device" || die Failed to create physical device
 
-rm -rf /dev/vg_csi_sanity_$$
-vgcreate -s $((1024*1024))b vg_csi_sanity_$$ "$device" || die Failed to create volume group
+rm -f /dev/vg_csi_sanity_$$
+vgcreate -s 1m vg_csi_sanity_$$ "$device" || die Failed to create volume group
 rollback="echo Bringing down vg_csi_sanity_$$; vgchange -a n vg_csi_sanity_$$; rm -f /dev/vg_csi_sanity_$$; $rollback"
 
 lvcreate -L 512b -n rpc-lock --addtag csi-sanlock-lvm.vleo.net/rpcRole=lock vg_csi_sanity_$$ || die Failed to create rpc lock logical volume

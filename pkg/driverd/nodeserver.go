@@ -16,6 +16,7 @@ package driverd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 
 	pb "github.com/aleofreddi/csi-sanlock-lvm/pkg/proto"
@@ -336,7 +337,10 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 
 	stat, err := fs.Stat(volumePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to stat volume %q: %v", vol, err)
+		if os.IsNotExist(err) {
+			return nil, status.Errorf(codes.NotFound, "failed to stat volume %q on non existent path %q: %v", vol, volumePath, err)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to stat volume %q on path %q: %v", vol, volumePath, err)
 	}
 	if stat == nil {
 		// No detailed stats available (for example raw volumes) - return the size.
